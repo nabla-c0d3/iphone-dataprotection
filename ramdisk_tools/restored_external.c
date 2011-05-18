@@ -1,0 +1,185 @@
+/**
+https://github.com/comex/bloggy/wiki/Redsn0w%2Busbmux
+**/
+#include <unistd.h>
+#include <CoreFoundation/CoreFoundation.h>
+#include <AvailabilityMacros.h>
+#define MAC_OS_X_VERSION_MIN_REQUIRED MAC_OS_X_VERSION_10_5
+#include "IOUSBDeviceControllerLib.h"
+#include <IOKit/IOCFPlugIn.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/socket.h>
+#include <sys/sockio.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <assert.h>
+#include "plist_server.h"
+#include "remote_functions.h"
+#include "device_info.h"
+
+#define kIOSomethingPluginID CFUUIDGetConstantUUIDWithBytes(NULL, \
+    0x9E, 0x72, 0x21, 0x7E, 0x8A, 0x60, 0x11, 0xDB, \
+    0xBF, 0x57, 0x00, 0x0D, 0x93, 0x6D, 0x06, 0xD2)
+#define kIOWhatTheFuckID CFUUIDGetConstantUUIDWithBytes(NULL, \
+    0xEA, 0x33, 0xBA, 0x4F, 0x8A, 0x60, 0x11, 0xDB, \
+    0x84, 0xDB, 0x00, 0x0D, 0x93, 0x6D, 0x06, 0xD2)
+
+/*
+PTPD
+0x9e 0x72 0x21 0x7e 0x8a 0x60 0x11 0xdb
+0xbf 0x57 0x00 0x0d 0x93 0x6d 0x06 0xd2
+
+0xc2 0x44 0xe8 0x58 0x10 0x9c 0x11 0xd4 
+0x91 0xd4 0x00 0x50 0xe4 0xc6 0x42 0x6f
+*/
+void init_usb() {
+    IOUSBDeviceDescriptionRef desc = IOUSBDeviceDescriptionCreateFromDefaults(kCFAllocatorDefault);
+    IOUSBDeviceDescriptionSetSerialString(desc, CFSTR("blah"));
+    
+    CFArrayRef usb_interfaces = IOUSBDeviceDescriptionCopyInterfaces(desc);
+    int i;
+    for(i=0; i < CFArrayGetCount(usb_interfaces); i++)
+    {
+        CFArrayRef arr1 = CFArrayGetValueAtIndex(usb_interfaces, i);
+        
+        if( CFArrayContainsValue(arr1, CFRangeMake(0,CFArrayGetCount(arr1)), CFSTR("PTP")))
+        {
+            printf("Found PTP interface\n");
+            break;
+        }
+    }
+    
+    IOUSBDeviceControllerRef controller;
+    while (IOUSBDeviceControllerCreate(kCFAllocatorDefault, &controller))
+    {
+        printf("Unable to get USB device controller\n");
+        sleep(3);    
+    }
+    IOUSBDeviceControllerSetDescription(controller, desc);
+    
+    CFMutableDictionaryRef match = IOServiceMatching("IOUSBDeviceInterface");
+    CFMutableDictionaryRef dict = CFDictionaryCreateMutable(NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFDictionarySetValue(dict, CFSTR("USBDeviceFunction"), CFSTR("PTP"));
+    CFDictionarySetValue(match, CFSTR("IOPropertyMatch"), dict);
+    io_service_t service;
+    while(1) {
+        service = IOServiceGetMatchingService(kIOMasterPortDefault, match);
+        if(!service) {
+            printf("Didn't find, trying again\n");
+            sleep(1);
+        } else {
+            break;
+        }
+    }
+    IOCFPlugInInterface **iface;
+    SInt32 score;
+    printf("123\n");
+    assert(!IOCreatePlugInInterfaceForService(
+        service,
+        kIOSomethingPluginID,
+        kIOCFPlugInInterfaceID,
+        &iface,
+        &score
+        ));
+    void *thing;
+    
+    assert(!((*iface)->QueryInterface)(iface,
+                CFUUIDGetUUIDBytes(kIOWhatTheFuckID),
+                &thing));
+                
+    IOReturn (**table)(void *, ...) = *((void **) thing);
+    printf("%p\n", table[0x10/4]);
+    
+    //open IOUSBDeviceInterfaceInterface
+    (!table[0x10/4](thing, 0));
+    //set IOUSBDeviceInterfaceInterface class
+    (!table[0x2c/4](thing, 0xff, 0));
+    //set IOUSBDeviceInterfaceInterface sub-class
+    (!table[0x30/4](thing, 0x50, 0));
+    //set IOUSBDeviceInterfaceInterface protocol
+    (!table[0x34/4](thing, 0x43, 0));
+    //commit IOUSBDeviceInterfaceInterface configuration
+    (!table[0x44/4](thing, 0));
+    IODestroyPlugInInterface(iface);
+    //assert(!table[0x14/4](thing, 0));
+}
+
+void init_tcp() {
+    // from launchd
+    struct ifaliasreq ifra;
+    struct ifreq ifr;
+    int s;
+
+    memset(&ifr, 0, sizeof(ifr));
+    strcpy(ifr.ifr_name, "lo0");
+
+    if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+        return;
+
+    if (ioctl(s, SIOCGIFFLAGS, &ifr) != -1) {
+        ifr.ifr_flags |= IFF_UP;
+        assert(ioctl(s, SIOCSIFFLAGS, &ifr) != -1);
+    }
+
+    memset(&ifra, 0, sizeof(ifra));
+    strcpy(ifra.ifra_name, "lo0");
+    ((struct sockaddr_in *)&ifra.ifra_addr)->sin_family = AF_INET;
+    ((struct sockaddr_in *)&ifra.ifra_addr)->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    ((struct sockaddr_in *)&ifra.ifra_addr)->sin_len = sizeof(struct sockaddr_in);
+    ((struct sockaddr_in *)&ifra.ifra_mask)->sin_family = AF_INET;
+    ((struct sockaddr_in *)&ifra.ifra_mask)->sin_addr.s_addr = htonl(IN_CLASSA_NET);
+    ((struct sockaddr_in *)&ifra.ifra_mask)->sin_len = sizeof(struct sockaddr_in);
+
+    assert(ioctl(s, SIOCAIFADDR, &ifra) != -1);
+
+    assert(close(s) == 0);
+
+}
+
+char* execve_env[]= {NULL};
+char* execve_params[]={"/sbin/sshd", NULL};
+
+int main(int argc, char* argv[])
+{
+    printf("Starting ramdisk tool\n");
+    printf("Compiled " __DATE__ " " __TIME__ "\n");
+    
+    CFMutableDictionaryRef matching;
+    io_service_t service = 0;
+    matching = IOServiceMatching("IOWatchDogTimer");
+    if (matching == NULL) {
+        printf("unable to create matching dictionary for class IOWatchDogTimer\n");
+    }
+    
+    service = IOServiceGetMatchingService(kIOMasterPortDefault, matching);
+    if (service == 0) {
+        printf("unable to create matching dictionary for class IOWatchDogTimer\n");
+    }
+    uint32_t zero = 0;
+    CFNumberRef n = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &zero);
+    IORegistryEntrySetCFProperties(service, n);
+    IOObjectRelease(service);
+    
+    init_tcp();
+    init_usb();
+    printf("USB init done\n");
+    
+    if(!fork())
+    {
+        printf("Running %s\n", execve_params[0]);
+        execve(execve_params[0], execve_params, execve_env);
+        return 0;
+    }
+    
+    CFMutableDictionaryRef handlers = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, NULL);
+    CFDictionaryAddValue(handlers, CFSTR("DeviceInfo"), device_info);
+    CFDictionaryAddValue(handlers, CFSTR("GetSystemKeyBag"), load_system_keybag);
+    CFDictionaryAddValue(handlers, CFSTR("BruteforceSystemKeyBag"), bruteforce_system_keybag);
+    CFDictionaryAddValue(handlers, CFSTR("KeyBagGetPasscodeKey"), keybag_get_passcode_key);
+    CFDictionaryAddValue(handlers, CFSTR("GetEscrowRecord"), get_escrow_record);
+    CFDictionaryAddValue(handlers, CFSTR("DownloadFile"), download_file);
+
+    serve_plist_rpc(1999, handlers);
+    return 0;
+}
