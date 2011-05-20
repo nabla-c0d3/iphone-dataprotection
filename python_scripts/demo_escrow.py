@@ -19,16 +19,16 @@ def escrow():
         res = client.getEscrowRecord(lockdown["HostID"])
         bagkey = res.get("BagKey")
         print "Bag key" + bagkey.data.encode("hex")
-        res = client.getPasscodeKey(lockdown["EscrowBag"].data, bagkey.data)
+        res = client.getPasscodeKey(lockdown["EscrowBag"].data, bagkey)
         print res
         passcodeKey = res["passcodeKey"].decode("hex")
         keybags[kbuuid] = {"KeyBagKeys": lockdown["EscrowBag"],
                             "passcode": bagkey,
-                            "passcodeKey": passcodeKey}
+                            "passcodeKey": passcodeKey.encode("hex")}
     else:
         passcodeKey = keybags[kbuuid].get("passcodeKey").decode("hex")
 
     print kb.unlockWithPasscodeKey(passcodeKey)
-    print kb.printClassKeys()
-    
+    kb.printClassKeys()
+
 escrow()

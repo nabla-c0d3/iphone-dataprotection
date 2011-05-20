@@ -30,7 +30,7 @@ def bf_system():
         print "We've already seen this keybag"
         passcodeKey = keybags[kbuuid].get("passcodeKey").decode("hex")
         print kb.unlockWithPasscodeKey(passcodeKey)
-        print kb.printClassKeys()
+        kb.printClassKeys()
     else:
         keybags[kbuuid] = {"KeyBagKeys": systembag["KeyBagKeys"]}
         di.save()
@@ -41,7 +41,7 @@ def bf_system():
                 keybags[kbuuid].update(bf)
             print bf
             print kb.unlockWithPasscodeKey(bf.get("passcodeKey").decode("hex"))
-            print kb.printClassKeys()
+            kb.printClassKeys()
             di["classKeys"] = kb.getClearClassKeysDict()
             di.save()
         else:
