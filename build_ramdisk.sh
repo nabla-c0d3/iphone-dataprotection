@@ -16,6 +16,10 @@ if [ ! -f $RAMDISK ]; then
     unzip $IPSW $RAMDISK
 fi
 
+if [ ! -f ssh.tar.gz ]; then
+    curl -O http://iphone-dataprotection.googlecode.com/files/ssh.tar.gz
+fi
+
 mkdir $IMG3MNT
 
 $IMG3FS $IMG3MNT $RAMDISK
@@ -28,7 +32,7 @@ tar -C /Volumes/ramdisk/ -xP <  ssh.tar.gz
 
 cp ramdisk_tools/restored_external /Volumes/ramdisk/usr/local/bin
 
-cp ramdisk_tools/bruteforce ramdisk_tools/data_partition /Volumes/ramdisk/var/root
+cp ramdisk_tools/bruteforce ramdisk_tools/data_partition ramdisk_tools/dump_data_partition.sh /Volumes/ramdisk/var/root
 
 
 hdiutil eject /Volumes/ramdisk

@@ -2,18 +2,20 @@
 https://github.com/comex/bloggy/wiki/Redsn0w%2Busbmux
 **/
 #include <unistd.h>
-#include <CoreFoundation/CoreFoundation.h>
-#include <AvailabilityMacros.h>
-#define MAC_OS_X_VERSION_MIN_REQUIRED MAC_OS_X_VERSION_10_5
-#include "IOUSBDeviceControllerLib.h"
-#include <IOKit/IOCFPlugIn.h>
+#include <stdlib.h>
 #include <netinet/in.h>
-#include <sys/socket.h>
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <net/if.h>
 #include <assert.h>
+#include <CoreFoundation/CoreFoundation.h>
+#include <AvailabilityMacros.h>
+#define MAC_OS_X_VERSION_MIN_REQUIRED MAC_OS_X_VERSION_10_5
+#include <IOKit/IOCFPlugIn.h>
+#include "IOUSBDeviceControllerLib.h"
 #include "plist_server.h"
 #include "remote_functions.h"
 #include "device_info.h"
@@ -25,14 +27,6 @@ https://github.com/comex/bloggy/wiki/Redsn0w%2Busbmux
     0xEA, 0x33, 0xBA, 0x4F, 0x8A, 0x60, 0x11, 0xDB, \
     0x84, 0xDB, 0x00, 0x0D, 0x93, 0x6D, 0x06, 0xD2)
 
-/*
-PTPD
-0x9e 0x72 0x21 0x7e 0x8a 0x60 0x11 0xdb
-0xbf 0x57 0x00 0x0d 0x93 0x6d 0x06 0xd2
-
-0xc2 0x44 0xe8 0x58 0x10 0x9c 0x11 0xd4 
-0x91 0xd4 0x00 0x50 0xe4 0xc6 0x42 0x6f
-*/
 void init_usb() {
     IOUSBDeviceDescriptionRef desc = IOUSBDeviceDescriptionCreateFromDefaults(kCFAllocatorDefault);
     IOUSBDeviceDescriptionSetSerialString(desc, CFSTR("blah"));
@@ -164,6 +158,19 @@ int main(int argc, char* argv[])
     init_tcp();
     init_usb();
     printf("USB init done\n");
+    
+    int i;
+    struct stat st;
+    printf("Waiting for /dev/disk0s2s1\n");
+    for(i=0; i < 10; i++)
+    {
+        if(!stat("/dev/disk0s2s1", &st))
+            break;
+        sleep(5);
+    }
+    
+    system("/sbin/fsck_hfs  /dev/disk0s2s1");
+    system("mount /"); //make ramdisk writable
     
     if(!fork())
     {

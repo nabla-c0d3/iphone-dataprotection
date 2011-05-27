@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include "device_info.h"
+#include "util.h"
 
 int main(int argc, char* argv[])
 {

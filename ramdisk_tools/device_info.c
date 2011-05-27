@@ -6,6 +6,7 @@
 #include "AppleEffaceableStorage.h"
 #include "bsdcrypto/rijndael.h"
 #include "bsdcrypto/key_wrap.h"
+#include "registry.h"
 #include "util.h"
 
 CFDictionaryRef device_info(int socket, CFDictionaryRef request)
@@ -20,7 +21,7 @@ CFDictionaryRef device_info(int socket, CFDictionaryRef request)
                                                             &kCFTypeDictionaryKeyCallBacks,
                                                             &kCFTypeDictionaryValueCallBacks);	
     
-    get_device_infos(out, 1);
+    get_device_infos(out);
     
     getHFSInfos(&hfsinfos);
     /*

@@ -118,7 +118,7 @@ int main(int argc, char* argv[])
 {
     u_int8_t passcodeKey[32]={0};
     char* passcode = NULL;
-    char* diskname = "/dev/disk0s2";
+    char* diskname = "/dev/disk0s2s1";
     int bruteforceMethod = 0;
     int showImages = 0;
     int c;

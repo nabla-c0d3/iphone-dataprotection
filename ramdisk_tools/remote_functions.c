@@ -60,7 +60,7 @@ char* bruteforceWithAppleKeyStore(CFDataRef kbkeys, int (*callback)(void*,int), 
 
 CFDictionaryRef load_system_keybag(int socket, CFDictionaryRef dict)
 {
-    char* diskname = "/dev/disk0s2";
+    char* diskname = "/dev/disk0s2s1";
 
     CFDictionaryRef kbdict = AppleKeyStore_loadKeyBag("/private/var/keybags","systembag");
     
@@ -91,7 +91,7 @@ CFDictionaryRef bruteforce_system_keybag(int socket, CFDictionaryRef dict)
     if(kbkeys == NULL || CFGetTypeID(kbkeys) != CFDataGetTypeID())
         return NULL;
 
-    char* passcode = bruteforceWithAppleKeyStore(kbkeys, bruteforceProgressCallback, socket);
+    char* passcode = bruteforceWithAppleKeyStore(kbkeys, bruteforceProgressCallback, (void*) socket);
     
     if (passcode == NULL)
         return NULL;
@@ -117,8 +117,6 @@ CFDictionaryRef bruteforce_system_keybag(int socket, CFDictionaryRef dict)
 CFDictionaryRef keybag_get_passcode_key(int socket, CFDictionaryRef dict)
 {
     uint8_t passcodeKey[32];
-    const char* passcode = NULL;
-    size_t passcodeLen;
     CFDataRef passcode_cfdata = NULL;
     
     CFDataRef kbkeys = CFDictionaryGetValue(dict, CFSTR("KeyBagKeys")); 
@@ -139,7 +137,7 @@ CFDictionaryRef keybag_get_passcode_key(int socket, CFDictionaryRef dict)
     }
     else if(CFGetTypeID(cfpasscode) == CFStringGetTypeID())
     {
-        passcode_cfdata = CFStringCreateExternalRepresentation(kCFAllocatorDefault, cfpasscode, kCFStringEncodingUTF8, NULL);
+        passcode_cfdata = CFStringCreateExternalRepresentation(kCFAllocatorDefault, cfpasscode, kCFStringEncodingUTF8, 0);
     }
     else
         return NULL;
