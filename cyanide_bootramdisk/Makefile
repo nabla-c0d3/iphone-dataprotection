@@ -6,7 +6,7 @@ LOADADDR = 0x42F00000
 OBJCOPY = $(CROSS)objcopy
 OBJECTS = entry.o main.o  commands.o patch.o 
 CFLAGS = -I./$(SRC)/include -nostdlib -mlittle-endian
-LDFLAGS = -Ttext=$(LOADADDR) -nostdlib -lc -lm -lgcc
+LDFLAGS = -Ttext $(LOADADDR) -nostdlib -lc -lm -lgcc
 
 %.o: $(SRC)/%.S
 	$(CC) -c $(<) -o $(@) $(INCLUDES) $(CFLAGS) 

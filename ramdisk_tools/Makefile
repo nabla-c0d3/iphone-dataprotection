@@ -1,6 +1,6 @@
 CC=/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/arm-apple-darwin10-gcc-4.0.1 
 CFLAGS=-Wall -arch armv6 -isysroot /Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS4.2.sdk/
-CFLAGS_IOKIT=$(CFLAGS) -I/usr/local/include -framework IOKit -framework CoreFoundation -framework Security -O3 -F/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS4.2.sdk/System/Library/PrivateFrameworks/ -framework IOMobileFrameBuffer -framework CoreGraphics -framework CoreSurface -framework ImageIO
+CFLAGS_IOKIT=$(CFLAGS) -I/usr/local/include -framework IOKit -framework CoreFoundation -framework Security -O3 -F/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS4.2.sdk/System/Library/PrivateFrameworks/ -framework IOMobileFramebuffer -framework CoreGraphics -framework CoreSurface -framework ImageIO
 
 all: IOUSBDeviceControllerLib.h data_partition restored_external bruteforce
 
