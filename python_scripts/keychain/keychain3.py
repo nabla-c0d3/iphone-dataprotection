@@ -8,6 +8,8 @@ class Keychain3(Keychain):
         self.key835 = key835
         
     def decrypt_data(self, data):
+        if data == None:
+            return ""
         data = str(data)
         
         if not self.key835:

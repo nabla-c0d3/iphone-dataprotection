@@ -9,7 +9,7 @@ from util.cert import RSA_KEY_DER_to_PEM
 
 def render_password(p):
     data = p["data"]
-    if data.startswith("bplist") and data.find("\x00") != -1:
+    if data != None and data.startswith("bplist") and data.find("\x00") != -1:
         pl = BPlistReader.plistWithString(p["data"])
         filename = "%s_%s_%d.plist" % (p["svce"],p["acct"],p["rowid"])
         plistlib.writePlist(pl, filename)

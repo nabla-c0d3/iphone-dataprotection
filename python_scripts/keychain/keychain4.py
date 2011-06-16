@@ -34,6 +34,9 @@ class Keychain4(Keychain):
         self.keybag = keybag
 
     def decrypt_data(self, blob):
+        if blob == None:
+            return ""
+        
         if len(blob) < 48:
             print "keychain blob length must be >= 48"
             return
