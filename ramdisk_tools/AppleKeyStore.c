@@ -225,3 +225,21 @@ void AppleKeyStore_printKeyBag(KeyBag* kb)
     }
     printf("\n");
 }
+
+CFMutableDictionaryRef AppleKeyStore_getClassKeys(KeyBag* kb)
+{
+    int i;
+    CFMutableDictionaryRef dict = CFDictionaryCreateMutable(kCFAllocatorDefault, kb->numKeys, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFStringRef key;
+    
+    for (i=0; i < kb->numKeys; i++)
+    {
+        if(kb->keys[i].wrap == 0)
+        {
+            key = CFStringCreateWithFormat(kCFAllocatorDefault, NULL, CFSTR("%d"), kb->keys[i].clas);
+            addHexaString(dict, key, kb->keys[i].wpky, 32);
+            CFRelease(key);
+        }
+    }
+    return dict;
+}

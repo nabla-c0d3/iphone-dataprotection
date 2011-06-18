@@ -16,7 +16,7 @@ restored_external: restored_external.c device_info.c remote_functions.c plist_se
 	$(CC) $(CFLAGS_IOKIT) -o $@ $^
 	ldid -Skeystore_device.xml $@
 
-bruteforce: systemkb_bruteforce.c AppleKeyStore.c AppleEffaceableStorage.c IOKit.c IOAESAccelerator.c util.c registry.c AppleKeyStore_kdf.c bsdcrypto/pbkdf2.c bsdcrypto/sha1.c bsdcrypto/rijndael.c bsdcrypto/key_wrap.c image.c
+bruteforce: systemkb_bruteforce.c AppleKeyStore.c AppleEffaceableStorage.c IOKit.c IOAESAccelerator.c util.c registry.c AppleKeyStore_kdf.c bsdcrypto/pbkdf2.c bsdcrypto/sha1.c bsdcrypto/rijndael.c bsdcrypto/key_wrap.c image.c device_info.c
 	$(CC) $(CFLAGS_IOKIT) -o $@ $^
 	ldid -S $@
 	ldid -Skeystore_device.xml $@

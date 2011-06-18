@@ -9,6 +9,7 @@
 #include "registry.h"
 #include "util.h"
 #include "image.h"
+#include "remote_functions.h"
 
 /*
  #define MobileKeyBagBase 0x354cb000
@@ -22,10 +23,9 @@
  plist["restrictedValue"]["passcodeKeyboardComplexity"]
  */
 
-void saveKeybagInfos(CFDataRef kbkeys, KeyBag* kb, uint8_t* key835, char* passcode, uint8_t* passcodeKey)
+void saveKeybagInfos(CFDataRef kbkeys, KeyBag* kb, uint8_t* key835, char* passcode, uint8_t* passcodeKey, CFMutableDictionaryRef classKeys)
 {
-    CFMutableDictionaryRef out  = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);	
-    get_device_infos(out);
+    CFMutableDictionaryRef out = device_info(-1, NULL);
 
     CFStringRef uuid = CreateHexaCFString(kb->uuid, 16);
     
@@ -45,8 +45,15 @@ void saveKeybagInfos(CFDataRef kbkeys, KeyBag* kb, uint8_t* key835, char* passco
     
     if (key835 != NULL)
         addHexaString(out, CFSTR("key835"), key835, 16);
+    if (classKeys != NULL)
+        CFDictionaryAddValue(out, CFSTR("classKeys"), classKeys);
 
-    CFStringRef resultsFileName = CFStringCreateWithFormat(kCFAllocatorDefault, NULL, CFSTR("keybag_%@.plist"), uuid);
+    CFStringRef resultsFileName = CFStringCreateWithFormat(kCFAllocatorDefault, NULL, CFSTR("%@.plist"), CFDictionaryGetValue(out, CFSTR("dataVolumeUUID")));
+    
+    CFStringRef printString = CFStringCreateWithFormat(kCFAllocatorDefault, NULL, CFSTR("Writing results to %@.plist\n"), CFDictionaryGetValue(out, CFSTR("dataVolumeUUID")));
+    
+    CFShow(printString);
+    CFRelease(printString);
     
     saveResults(resultsFileName, out);
     
@@ -136,8 +143,13 @@ int main(int argc, char* argv[])
         }
     }
     
-    if (showImages)
-        drawImage("logo.png");
+    uint8_t* key835 = IOAES_key835();
+    
+    if (!memcmp(key835, "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16))
+    {
+        printf("FAIL: missing UID kernel patch\n");
+        return -1;
+    }
     
     CFDictionaryRef kbdict = AppleKeyStore_loadKeyBag("/private/var/keybags","systembag");
     
@@ -174,10 +186,8 @@ int main(int argc, char* argv[])
         return -1;
     }
     
-    uint8_t* key835 = IOAES_key835();
-    
     //save all we have for now
-    saveKeybagInfos(kbkeys, kb, key835, NULL, NULL);
+    saveKeybagInfos(kbkeys, kb, key835, NULL, NULL, NULL);
     
     //now try to unlock the keybag
     
@@ -193,11 +203,10 @@ int main(int argc, char* argv[])
         else
             printf("Found passcode : %s\n", passcode);
         
-        if (showImages)
-            drawImage("unlocked.png");
-        
         AppleKeyStore_unlockKeybagFromUserland(kb, passcode, 4, key835);
         AppleKeyStore_printKeyBag(kb);
+        
+        CFMutableDictionaryRef classKeys = AppleKeyStore_getClassKeys(kb);
         
         AppleKeyStore_getPasscodeKey(kb, passcode, strlen(passcode), passcodeKey);
         
@@ -210,7 +219,8 @@ int main(int argc, char* argv[])
         printf("\n");
         
         //save all we have for now
-        saveKeybagInfos(kbkeys, kb, key835, passcode, passcodeKey);
+        saveKeybagInfos(kbkeys, kb, key835, passcode, passcodeKey, classKeys);
+        CFRelease(classKeys);
 
         free(passcode);
     }
