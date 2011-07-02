@@ -5,9 +5,7 @@ from PyQt4 import QtGui, QtCore
 from keychain.keychain_backup4 import KeychainBackup4
 from Crypto.Cipher import AES
 from crypto.aeswrap import AESUnwrap
-from backups.mbdb import MBDB
-from util.bplist import BPlistReader
-from keystore.keybag import Keybag
+from backups.backup4 import MBDB, getBackupKeyBag
 from pprint import pprint
 
 class KeychainTreeWidget(QtGui.QTreeWidget):
@@ -111,23 +109,11 @@ class KeychainWindow(QtGui.QWidget):
 def warn(msg):
     print "WARNING: %s" % msg
 
-def decryptBackup4(backupfolder, passphrase):
-    manifest = BPlistReader.plistWithFile(backupfolder + "/Manifest.plist")
-    pprint(manifest)
-
-    kb = Keybag(manifest["BackupKeyBag"].data)
-
-    if kb.unlockBackupKeybagWithPasscode(passphrase):
-        print "BackupKeyBag unlock OK"
-        return kb
-    else:
-        return None
-    
 def main():
     app = QtGui.QApplication(sys.argv)
     init_path = "{0:s}/Apple Computer/MobileSync/Backup".format(os.getenv('APPDATA'))
     dirname = QtGui.QFileDialog.getExistingDirectory(None, "Select iTunes backup directory", init_path)
-    kb = decryptBackup4(dirname, 'pouet')
+    kb = getBackupKeyBag(dirname, 'pouet')	#XXX: hardcoded password for demo
     if not kb:
         warn("Backup keybag unlock fail : wrong passcode?")
         return

@@ -5,6 +5,9 @@ import sys
 from struct import pack, unpack
 from Crypto.Cipher import AES
 from crypto.aeswrap import AESUnwrap
+from util.bplist import BPlistReader
+from keystore.keybag import Keybag
+from pprint import pprint
 
 MBDB_SIGNATURE = 'mbdb\x05\x00'
 MBDX_SIGNATURE = 'mbdx\x02\x00'
@@ -135,6 +138,16 @@ class MBDB(object):
             print f.path
         '''
 
+def getBackupKeyBag(backupfolder, passphrase):
+    manifest = BPlistReader.plistWithFile(backupfolder + "/Manifest.plist")
+
+    kb = Keybag(manifest["BackupKeyBag"].data)
+
+    if kb.unlockBackupKeybagWithPasscode(passphrase):
+        print "BackupKeyBag unlock OK"
+        return kb
+    else:
+        return None
 
 def warn(msg):
     print "WARNING: %s" % msg
@@ -153,7 +166,7 @@ def main():
 
     mbdb = MBDB(backup_path)
 
-    kb = backup4.decryptBackup4(backup_path, password)
+    kb = getBackupKeyBag(backup_path, password)
     if kb is None:
         raise Exception("Cannot decrypt keybag. Wrong pass?")
 
