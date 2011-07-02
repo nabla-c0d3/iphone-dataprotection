@@ -78,6 +78,13 @@ static BTKey* attrKeyRead(off_t offset, io_func* io) {
 	FLIPENDIAN(key->fileID);
 	FLIPENDIAN(key->startBlock);
 	FLIPENDIAN(key->name.length);
+	
+	if(key->name.length > 254)
+	{
+		printf("Invalid xattr key at offset %x\n", offset);
+		free(key);
+		return NULL;
+	}
 
 	if(!READ(io, offset + UNICODE_START, key->name.length * sizeof(uint16_t), ((unsigned char *)key) + UNICODE_START))
 		return NULL;

@@ -204,7 +204,6 @@ int main(int argc, const char *argv[]) {
 
 	char* dir = dirname((char*)argv[1]);
 	EMFInfo* emf = EMF_init(volume, dir);
-	free(dir);
 	
 	if(emf != NULL)
 	{
