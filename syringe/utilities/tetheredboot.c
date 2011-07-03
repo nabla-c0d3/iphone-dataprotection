@@ -90,7 +90,7 @@ int main(int argc, char* argv[]) {
 
 	if (ramdiskFile == NULL || payloadFile == NULL)
 	{
-		error("Missing ramdisk or payload file");
+		error("Missing ramdisk or payload file\n");
 		return -1;
 	}
 

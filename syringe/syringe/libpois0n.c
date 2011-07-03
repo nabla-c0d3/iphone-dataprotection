@@ -301,7 +301,7 @@ int pois0n_is_compatible() {
 
 	debug("Checking the device type\n");
 	error = irecv_get_device(client, &device);
-	if (device == NULL || device->index == DEVICE_UNKNOWN) {
+	if (device == NULL) {
 		error("Sorry device is not compatible with this jailbreak\n");
 		return -1;
 	}

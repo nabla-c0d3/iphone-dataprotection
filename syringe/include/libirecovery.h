@@ -72,6 +72,7 @@ extern "C" {
 #define CPID_IPHONE4      8930
 #define CPID_IPOD4G       8930
 #define CPID_APPLETV2     8930
+#define CPID_IPHONE42     8930
 
 #define BDID_UNKNOWN        -1
 #define BDID_IPHONE2G        0
@@ -84,6 +85,7 @@ extern "C" {
 #define BDID_IPHONE4         0
 #define BDID_IPOD4G          8
 #define BDID_APPLETV2       10
+#define BDID_IPHONE42        6
 
 #define DEVICE_UNKNOWN      -1
 #define DEVICE_IPHONE2G      0
@@ -96,6 +98,7 @@ extern "C" {
 #define DEVICE_IPHONE4       7
 #define DEVICE_IPOD4G        8
 #define DEVICE_APPLETV2      9
+#define DEVICE_IPHONE42      10
 
 enum {
 	kRecoveryMode1 = 0x1280,
@@ -199,7 +202,9 @@ static const struct irecv_device irecv_devices[] = {
 	"http://appldnld.apple.com/iPhone4/041-0545.20110325.We3Rt/iPod4,1_4.3.1_8G4_Restore.ipsw" },
 	{  9, "AppleTV2,1", "k66ap", 10,  8930,
 	"http://appldnld.apple.com/AppleTV/041-0574.20110322.Dcfr5/AppleTV2,1_4.3_8F202_Restore.ipswy" },
-	{ -1,  NULL,        NULL,   -1,    -1,
+	{ 10, "iPhone3,3",  "n92ap",   BDID_IPHONE42,     CPID_IPHONE42,
+        "http://appldnld.apple.com/iPhone4/041-1022.20110503.5g8k7/iPhone3,3_4.2.8_8E401_Restore.ipsw" },
+    { -1,  NULL,        NULL,   -1,    -1,
 	NULL }
 };
 
