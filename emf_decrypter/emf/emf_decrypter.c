@@ -98,7 +98,7 @@ int EMF_decrypt_file_blocks(EMFInfo* emf, HFSPlusCatalogFile* file, uint8_t* wra
 	{
 		for(i=0; i < extent->blockCount; i++)
 		{
-			if(READ(emf->volume->image, (extent->startBlock + i) * blockSize, blockSize, buffer), "READ")
+			if(READ(emf->volume->image, (extent->startBlock + i) * blockSize, blockSize, buffer))
 			{
 				EMF_fix_and_decrypt_block(emf, buffer, extent->startBlock + i, blockSize, &filekey);
 				
