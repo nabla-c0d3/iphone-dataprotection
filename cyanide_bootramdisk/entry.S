@@ -45,7 +45,7 @@ fiq_vector:		.word halt
 
 .pool
 .set	new_loadaddr,		0x41000000
-.set	new_payload_dest,	0x42F00000
+.set	new_payload_dest,	0x42F00000	@ move our payload at the end of the usb upload area, so we can later send a max 31 Mb ramdisk
 .set	old_loadaddr,		0x09000000
 .set	old_payload_dest,	0x0A000000
 
