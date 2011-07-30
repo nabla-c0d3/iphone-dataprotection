@@ -142,27 +142,27 @@ int EMF_decrypt_folder(EMFInfo* emf, HFSCatalogNodeID folderID)
 			
 			if(cprotect_xattr != NULL && attr_len > 0)
 			{
-				if (cprotect_xattr->version == 2 && attr_len == CPROTECT_V2_LENGTH)
+				if (cprotect_xattr->xattr_major_version == 2 && attr_len == CPROTECT_V2_LENGTH)
 				{
 					printf("Decrypting %s\n", name);
-					if(!EMF_decrypt_file_blocks(emf, file, cprotect_xattr->wrapped_key, cprotect_xattr->protection_class_id))
+					if(!EMF_decrypt_file_blocks(emf, file, cprotect_xattr->persistent_key, cprotect_xattr->persistent_class))
 					{
 						//TODO HAX: update cprotect xattr version field (bit1) to mark file as decrypted ?
 						//cprotect_xattr->version |= 1;
 						//setAttribute(volume, file->fileID, "com.apple.system.cprotect", (uint8_t*) cprotect_xattr, CPROTECT_V2_LENGTH);
 					}
 				}
-				else if (cprotect_xattr->version == 4 && attr_len == CPROTECT_V4_LENGTH)
+				else if (cprotect_xattr->xattr_major_version == 4 && attr_len == CPROTECT_V4_LENGTH)
 				{
 					//not just yet :)
 				}
-				else if (cprotect_xattr->version & 1)
+				else if (cprotect_xattr->xattr_major_version & 1)
 				{
 					//TODO: file already decrypted by this tool ?
 				}
 				else
 				{
-					fprintf(stderr, "Unknown cprotect xattr version/length : %x/%zx\n", cprotect_xattr->version, attr_len);
+					fprintf(stderr, "Unknown cprotect xattr version/length : %x/%zx\n", cprotect_xattr->xattr_major_version, attr_len);
 				}
 			}
 		}
