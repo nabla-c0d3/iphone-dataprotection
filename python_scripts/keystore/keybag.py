@@ -38,6 +38,23 @@ class Keybag(object):
         return mkb["_MKBWIPEID"]
 
     @staticmethod
+    def createWithPlist(pldict):
+        k835 = pldict.key835.decode("hex")
+        data = ""
+        if pldict.has_key("KeyBagKeys"):
+            data = pldict["KeyBagKeys"].data
+        keystore = Keybag.createWithDataSignBlob(data, k835)
+
+        if pldict.has_key("passcodeKey"):
+            if keystore.unlockWithPasscodeKey(pldict["passcodeKey"].decode("hex")):
+                print "Keybag unlocked with passcode key"
+            else:
+                print "FAILed to unlock keybag with passcode key"
+        #HAX: inject DKey
+        keystore.classKeys[4] = {"KEY": pldict["DKey"].decode("hex")}
+        return keystore
+        
+    @staticmethod
     def createWithSystemkbfile(filename, wipeablekey, deviceKey=None):
         mkb = BPlistReader.plistWithFile(filename)
         decryptedPlist  = AESdecryptCBC(mkb["_MKBPAYLOAD"], wipeablekey, mkb["_MKBIV"], padding=True)
@@ -84,7 +101,8 @@ class Keybag(object):
                 currentClassKey[tag] = data
             else:
                 self.attrs[tag] = data
-        self.classKeys[currentClassKey["CLAS"]] = currentClassKey
+        if currentClassKey:
+            self.classKeys[currentClassKey["CLAS"]] = currentClassKey
 
     def getPasscodekeyFromPasscode(self, passcode):
         if self.type == BACKUP_KEYBAG:
@@ -121,8 +139,8 @@ class Keybag(object):
         return True
 
     def unwrapKeyForClass(self, clas, data):
-        if not self.classKeys[clas].has_key("KEY"):
-            print "ERROR: keybag locked"
+        if not self.classKeys.has_key(clas) or not self.classKeys[clas].has_key("KEY"):
+            print "Keybag key %d missing or locked" % clas
             return ""
         ck = self.classKeys[clas]["KEY"]
         return AESUnwrap(ck, data)
