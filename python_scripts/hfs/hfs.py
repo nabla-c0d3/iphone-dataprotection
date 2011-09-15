@@ -35,7 +35,7 @@ class HFSFile(object):
         if truncate:
             f.truncate(self.logicalSize)
         f.close()
-    
+
     def readAllBuffer(self, truncate=True):
         r = ""
         for i in xrange(self.totalBlocks):
@@ -46,7 +46,7 @@ class HFSFile(object):
 
     def processBlock(self, block, lba):
         return block
-    
+
     def readBlock(self, n):
         bs = self.volume.blockSize
         if n*bs > self.logicalSize:
@@ -78,11 +78,13 @@ class HFSCompressedResourceFork(HFSFile):
         for b in self.blocks.HFSPlusCmpfRsrcBlock:
             r += zlib.decompress(buff[base+b.offset:base+b.offset+b.size])
         return r
-        
+
 class HFSVolume(object):
     def __init__(self, filename, write=False, offset=0):
         flag = os.O_RDONLY if not write else os.O_RDWR
-        self.fd = os.open(filename, flag | os.O_BINARY)
+        if sys.platform == 'win32':
+            flag = flag | os.O_BINARY
+        self.fd = os.open(filename, flag)
         self.offset = offset
 
         try:
@@ -91,55 +93,55 @@ class HFSVolume(object):
             assert self.header.signature == 0x4858 or self.header.signature == 0x482B
         except:
             raise Exception("Not an HFS+ image")
-        
+
         self.blockSize = self.header.blockSize
-        
+
         if os.path.getsize(filename) < self.header.totalBlocks * self.blockSize:
             print "WARNING: image appears to be truncated"
-        
-        self.catalogFile = HFSFile(self, self.header.catalogFile, kHFSCatalogFileID)
-        self.extentsFile = HFSFile(self, self.header.extentsFile, kHFSExtentsFileID)
-        self.xattrFile = HFSFile(self, self.header.attributesFile, kHFSAttributesFileID)
+
         self.allocationFile = HFSFile(self, self.header.allocationFile, kHFSAllocationFileID)
         self.allocationBitmap = self.allocationFile.readAllBuffer()
-        self.catalogTree = CatalogTree(self.catalogFile)
+        self.extentsFile = HFSFile(self, self.header.extentsFile, kHFSExtentsFileID)
         self.extentsTree = ExtentsOverflowTree(self.extentsFile)
+        self.catalogFile = HFSFile(self, self.header.catalogFile, kHFSCatalogFileID)
+        self.xattrFile = HFSFile(self, self.header.attributesFile, kHFSAttributesFileID)
+        self.catalogTree = CatalogTree(self.catalogFile)
         self.xattrTree = AttributesTree(self.xattrFile)
-        
+
         self.hasJournal = self.header.attributes & (1 << kHFSVolumeJournaledBit)
-            
+
     def read(self, offset, size):
         os.lseek(self.fd, self.offset + offset, os.SEEK_SET)
         return os.read(self.fd, size)
-    
+
     def write(self, offset, data):
         os.lseek(self.fd, self.offset + offset, os.SEEK_SET)
         return os.write(self.fd, data)
-    
+
     def writeBlock(self, lba, block):
         return self.write(lba*self.blockSize, block)
 
     def volumeID(self):
         return struct.pack(">LL", self.header.finderInfo[6], self.header.finderInfo[7])
-    
+
     def isBlockInUse(self, block):
         thisByte = ord(self.allocationBitmap[block / 8])
         return (thisByte & (1 << (7 - (block % 8)))) != 0
-    
+
     def unallocatedBlocks(self):
         for i in xrange(self.header.totalBlocks):
             if not self.isBlockInUse(i):
                 yield i, self.read(i*self.blockSize, self.blockSize)
-    
+
     def getExtentsOverflowForFile(self, fileID, startBlock, forkType=kForkTypeData):
         return self.extentsTree.searchExtents(fileID, startBlock, forkType)
-        
+
     def getXattr(self, fileID, name):
         return self.xattrTree.searchXattr(fileID, name)
-    
+
     def getFileByPath(self, path):
         return self.catalogTree.getRecordFromPath(path)
-    
+
     def listFolderContents(self, path):
         k,v = self.catalogTree.getRecordFromPath(path)
         if not k or v.recordType != kHFSPlusFolderRecord:
@@ -149,7 +151,7 @@ class HFSVolume(object):
                 print v.data.folderID, getString(k) + "/"
             elif v.recordType == kHFSPlusFileRecord:
                 print v.data.fileID, getString(k)
-    
+
     def listXattrs(self, path):
         k,v = self.catalogTree.getRecordFromPath(path)
         if k and v.recordType == kHFSPlusFileRecord:
@@ -176,19 +178,19 @@ class HFSVolume(object):
             elif decmpfs.compression_type == 4:
                 f = HFSCompressedResourceFork(self, v.data.resourceFork, v.data.fileID)
                 return f.readAllBuffer()
-        
+
         f = HFSFile(self, v.data.dataFork, v.data.fileID)
         if returnString:
             return f.readAllBuffer()
         else:
             f.readAll(os.path.basename(path))
-    
+
     def readJournal(self):
         jb = self.read(self.header.journalInfoBlock * self.blockSize, self.blockSize)
         jib = JournalInfoBlock.parse(jb)
         return self.read(jib.offset,jib.size)
 
-if __name__ == "__main__":    
+if __name__ == "__main__":
     v = HFSVolume("myramdisk.dmg",offset=0x40)
     v.listFolderContents("/")
     print v.readFile("/usr/local/share/restore/imeisv_svn.plist")
