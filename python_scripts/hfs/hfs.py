@@ -1,4 +1,5 @@
 import os
+import sys
 import struct
 import zlib
 from btree import AttributesTree, CatalogTree, ExtentsOverflowTree
