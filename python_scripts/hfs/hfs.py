@@ -135,7 +135,7 @@ class HFSVolume(object):
                 yield i, self.read(i*self.blockSize, self.blockSize)
 
     def getExtentsOverflowForFile(self, fileID, startBlock, forkType=kForkTypeData):
-        return self.extentsTree.searchExtents(fileID, startBlock, forkType)
+        return self.extentsTree.searchExtents(fileID, forkType, startBlock)
 
     def getXattr(self, fileID, name):
         return self.xattrTree.searchXattr(fileID, name)

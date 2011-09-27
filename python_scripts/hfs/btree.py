@@ -206,8 +206,8 @@ class ExtentsOverflowTree(BTree):
     def getComparableKey(self, k2):
         return (k2.fileID, k2.forkType, k2.startBlock)
     
-    def searchExtents(self, fileID, startBlock, forkType):
-        return self.search((fileID, startBlock, forkType))
+    def searchExtents(self, fileID, forkType, startBlock):
+        return self.search((fileID, forkType, startBlock))
 
 class AttributesTree(BTree):
     def __init__(self, file):
