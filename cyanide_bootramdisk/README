@@ -1,3 +1,0 @@
-Stripped down version of cyanide (https://github.com/Chronic-Dev/cyanide)
-- Sets boot args to "rd=md0 -v"
-- Hooks jump_to to apply kernel patches
