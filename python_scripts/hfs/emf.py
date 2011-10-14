@@ -35,6 +35,16 @@ cprotect_xattr = Struct("cprotect_xattr",
     String("persistent_key", length=0x28)
 )
 
+cprotect4_xattr = Struct("cprotect_xattr",
+    ULInt16("xattr_major_version"),
+    ULInt16("xattr_minor_version"),
+    ULInt32("flags"),
+    ULInt32("persistent_class"),
+    ULInt32("key_size"),
+    Padding(20),
+    String("persistent_key", length=lambda ctx: ctx["key_size"])
+)
+
 #HAX: flags set in finderInfo[3] to tell if the image was already decrypted
 FLAG_DECRYPTING = 0x454d4664  #EMFd big endian
 FLAG_DECRYPTED = 0x454d4644  #EMFD big endian
@@ -43,11 +53,24 @@ class EMFFile(HFSFile):
     def __init__(self, volume, hfsplusfork, fileID, filekey, deleted=False):
         super(EMFFile,self).__init__(volume, hfsplusfork, fileID, deleted)
         self.filekey = filekey
+        self.ivkey = None
+        self.decrypt_offset = 0
+        if volume.cp_root.major_version == 4:
+            self.ivkey = hashlib.sha1(filekey).digest()[:16]
 
     def processBlock(self, block, lba):
         iv = self.volume.ivForLBA(lba)
         ciphertext = AES.new(self.volume.emfkey, AES.MODE_CBC, iv).encrypt(block)
-        return AES.new(self.filekey, AES.MODE_CBC, iv).decrypt(ciphertext)
+        if not self.ivkey:
+            clear = AES.new(self.filekey, AES.MODE_CBC, iv).decrypt(ciphertext)
+        else:
+            clear = ""
+            for i in xrange(len(block)/0x1000):
+                iv = self.volume.ivForLBA(self.decrypt_offset, False)
+                iv = AES.new(self.ivkey).encrypt(iv)
+                clear += AES.new(self.filekey, AES.MODE_CBC, iv).decrypt(ciphertext[i*0x1000:(i+1)*0x1000])
+                self.decrypt_offset += 0x1000
+        return clear
     
     def decryptFile(self):
         self.decrypt_offset = 0
@@ -65,6 +88,8 @@ class EMFVolume(HFSVolume):
     def __init__(self, file, **kwargs):
         super(EMFVolume,self).__init__(file, **kwargs)
         pl = "%s/%s.plist" % (os.path.dirname(file), self.volumeID().encode("hex"))
+        if pl.startswith("/"):
+            pl = pl[1:]
         if not os.path.exists(pl):
             raise Exception("Missing keyfile %s" % pl)
         try:
@@ -81,6 +106,7 @@ class EMFVolume(HFSVolume):
         else:
             self.cp_root = cp_root_xattr.parse(rootxattr)
             print "cprotect version :", self.cp_root.major_version
+            assert self.cp_root.major_version == 2 or self.cp_root.major_version == 4
     
     def ivForLBA(self, lba, add=True):
         iv = ""
@@ -95,7 +121,10 @@ class EMFVolume(HFSVolume):
         return iv
     
     def getFileKeyForCprotect(self, cp):
-        cprotect = cprotect_xattr.parse(cp)
+        if self.cp_root.major_version == 2:
+            cprotect = cprotect_xattr.parse(cp)
+        elif self.cp_root.major_version == 4:
+            cprotect = cprotect4_xattr.parse(cp)
         return self.keystore.unwrapKeyForClass(cprotect.persistent_class, cprotect.persistent_key)
     
     def readFile(self, path, outFolder="./"):

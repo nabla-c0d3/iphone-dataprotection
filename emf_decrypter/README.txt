@@ -1,3 +1,5 @@
+DEPRECATED: use the python version instead
+
 Decrypts files data forks in raw iOS 4 disk images.
 Reads encryption keys from plist file named after the volume ID.
 The plist file must have at least the EMF and DKey fields set.

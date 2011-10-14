@@ -1,6 +1,6 @@
 import hashlib
 from Crypto.Cipher import AES
-from emf import cprotect_xattr, EMFFile
+from emf import cprotect_xattr, cprotect4_xattr, EMFFile
 from structs import *
 from util import write_file
 
@@ -75,6 +75,9 @@ def carveEMFVolumeJournal(volume):
     nodeSize = volume.catalogTree.nodeSize
     files = {}
     keys = {}
+    cprotect_struct_type = cprotect_xattr
+    if volume.cp_root.major_version >= 4:
+        cprotect_struct_type = cprotect4_xattr
     
     for i in xrange(0,len(journal),sector_size):
         for k,v in carveBtreeNode(journal[i:i+nodeSize],HFSPlusCatalogKey, HFSPlusCatalogData):
@@ -92,8 +95,11 @@ def carveEMFVolumeJournal(volume):
             if getString(k) == "com.apple.system.cprotect":
                 if volume.catalogTree.searchByCNID(k) == (None, None):
                     filekeys = keys.setdefault(k.fileID, [])
-                    cprotect = cprotect_xattr.parse(v.data)
-                    assert cprotect.xattr_major_version == 2
+                    try:
+                        cprotect = cprotect_struct_type.parse(v.data)
+                    except:
+                        continue
+                    #assert cprotect.xattr_major_version == 2
                     filekey = volume.keystore.unwrapKeyForClass(cprotect.persistent_class, cprotect.persistent_key)
                     if filekey and not filekey in filekeys:
                         print "Found key for file", k.fileID

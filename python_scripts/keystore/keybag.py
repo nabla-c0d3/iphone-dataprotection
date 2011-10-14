@@ -7,9 +7,11 @@ from pprint import pprint
 from crypto.PBKDF2 import PBKDF2
 from util.bplist import BPlistReader
 from crypto.aes import AESdecryptCBC
+from crypto.curve25519 import curve25519
+from hashlib import sha256
 
-KEYBAG_TAGS = ["VERS", "TYPE", "UUID", "HMCK", "WRAP", "SALT", "ITER"]
-CLASSKEY_TAGS = ["CLAS","WRAP","WPKY"]  #UUID
+KEYBAG_TAGS = ["VERS", "TYPE", "UUID", "HMCK", "WRAP", "SALT", "ITER", "PBKY"]
+CLASSKEY_TAGS = ["CLAS","WRAP","WPKY", "KTYP"]  #UUID
 KEYBAG_TYPES = ["System", "Backup", "Escrow"]
 SYSTEM_KEYBAG = 0
 BACKUP_KEYBAG = 1
@@ -138,20 +140,35 @@ class Keybag(object):
         self.unlocked =  True
         return True
 
-    def unwrapKeyForClass(self, clas, data):
+    def unwrapCurve25519(self, persistent_class, persistent_key):
+        assert len(persistent_key) == 0x48
+        assert persistent_class == 2    #NSFileProtectionCompleteUnlessOpen
+        mysecret = self.classKeys[persistent_class]["KEY"]
+        mypublic = self.attrs["PBKY"]
+        hispublic = persistent_key[:32]
+        shared = curve25519(mysecret, hispublic)
+        md = sha256('\x00\x00\x00\x01' + shared + hispublic + mypublic).digest()
+        return AESUnwrap(md, persistent_key[32:])
+
+    def unwrapKeyForClass(self, clas, persistent_key):
         if not self.classKeys.has_key(clas) or not self.classKeys[clas].has_key("KEY"):
             print "Keybag key %d missing or locked" % clas
             return ""
         ck = self.classKeys[clas]["KEY"]
-        return AESUnwrap(ck, data)
+        if self.attrs["VERS"] >= 3 and clas == 2:
+            return self.unwrapCurve25519(clas, persistent_key)
+        if len(persistent_key) == 0x28:
+            return AESUnwrap(ck, persistent_key)
+        return
     
     def printClassKeys(self):
         print "Keybag type : %s keybag (%d)" % (KEYBAG_TYPES[self.type], self.type)
         print "Keybag version : %d" % self.attrs["VERS"]
-        print "Class\tWRAP\tKey"
-        for ck in self.classKeys.values():
-            print "%s\t%s\t%s" % (ck["CLAS"], ck["WRAP"], ck.get("KEY","").encode("hex"))
-    
+        print "Class\tWRAP\tType\tKey"
+        for k, ck in self.classKeys.items():
+            print "%s\t%s\t%s\t%s" % (k, ck.get("WRAP"), ck.get("KTYP",""), ck.get("KEY","").encode("hex"))
+        print ""
+
     def getClearClassKeysDict(self):
         if self.unlocked:
             d = {}

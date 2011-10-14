@@ -87,6 +87,7 @@ class HFSVolume(object):
             flag = flag | os.O_BINARY
         self.fd = os.open(filename, flag)
         self.offset = offset
+        self.writeFlag = write
 
         try:
             data = self.read(0, 0x1000)
@@ -116,8 +117,9 @@ class HFSVolume(object):
         return os.read(self.fd, size)
 
     def write(self, offset, data):
-        os.lseek(self.fd, self.offset + offset, os.SEEK_SET)
-        return os.write(self.fd, data)
+        if self.writeFlag: #fail silently for testing 
+            os.lseek(self.fd, self.offset + offset, os.SEEK_SET)
+            return os.write(self.fd, data)
 
     def writeBlock(self, lba, block):
         return self.write(lba*self.blockSize, block)
