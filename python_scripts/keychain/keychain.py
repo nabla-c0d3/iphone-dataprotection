@@ -5,7 +5,11 @@ import M2Crypto
 from util import write_file
 from util.bplist import BPlistReader
 import plistlib
+import hashlib
+import string
 from util.cert import RSA_KEY_DER_to_PEM
+
+printset = set(string.printable)
 
 def render_password(p):
     data = p["data"]
@@ -13,7 +17,7 @@ def render_password(p):
         pl = BPlistReader.plistWithString(p["data"])
         filename = "%s_%s_%d.plist" % (p["svce"],p["acct"],p["rowid"])
         plistlib.writePlist(pl, filename)
-        write_file("bin_"+filename, p["data"])
+        #write_file("bin_"+filename, p["data"])
         data = filename
 
     if p.has_key("srvr"):
@@ -26,37 +30,25 @@ class Keychain:
         self.conn = sqlite3.connect(filename)
         self.conn.row_factory = sqlite3.Row
         self.bsanitize = True
-
+        
     def decrypt_data(self, data):
         return data #override this method
 
-    def get_passwords(self):
-        res = []
-        for row in self.conn.execute("SELECT rowid, data, svce, acct, agrp FROM genp"):
-            password = {}
-            password["rowid"] = row["rowid"]
-            password["svce"] = str(row["svce"])
-            password["acct"] = str(row["acct"])
-            password["data"] = self.decrypt_data(row["data"])
-            password["agrp"] = str(row["agrp"])
-
-            res.append(password)
+    def decrypt_item(self, row):
+        res = {}
+        for k in row.keys():
+            if type(row[k]) == buffer:
+                res[k] = str(row[k])
+            else:
+                res[k] = row[k]
+        res["data"] = self.decrypt_data(row["data"])
         return res
+
+    def get_passwords(self):
+        return map(self.decrypt_item, self.conn.execute("SELECT rowid, data, svce, acct, agrp FROM genp"))
 
     def get_inet_passwords(self):
-        res = []
-        for row in self.conn.execute("SELECT rowid, data, acct, srvr, port, agrp FROM inet"):
-            password = {}
-            password["rowid"] = row["rowid"]
-            password["acct"] = str(row["acct"])
-            password["srvr"] = str(row["srvr"])
-            password["port"] = str(row["port"])
-            password["data"] = self.decrypt_data(row["data"])
-            password["agrp"] = str(row["agrp"])
-
-            res.append(password)
-        return res
-
+        return map(self.decrypt_item, self.conn.execute("SELECT rowid, data, acct, srvr, port, agrp FROM inet"))
 
     def get_certs(self):
         certs = {}
@@ -82,7 +74,8 @@ class Keychain:
     def save_passwords(self):
         passwords = "\n".join(map(render_password,  self.get_passwords()))
         inetpasswords = "\n".join(map(render_password,  self.get_inet_passwords()))
-        write_file("keychain.csv", "Passwords\n"+passwords+"\nInternet passwords\n"+ inetpasswords)
+        print "Writing passwords to keychain.csv"
+        write_file("keychain.csv", "Passwords;;\n"+passwords+"\nInternet passwords;;\n"+ inetpasswords)
 
     def save_certs_keys(self):
         certs, pkeys = self.get_certs()
@@ -96,6 +89,8 @@ class Keychain:
     def sanitize(self, pw):
         if pw.startswith("bplist"):
             return "<binary plist data>"
+        elif not set(pw).issubset(printset):
+            pw = "<binary data> : " + pw.encode("hex")
         if self.bsanitize:
             return pw[:2] + ("*" * (len(pw) - 2))
         return pw
@@ -114,7 +109,7 @@ class Keychain:
             print "-"*60
 
         for p in self.get_inet_passwords():
-            print "Server : \t" + p["srvr"] + ":" + p["port"]
+            print "Server : \t" + p["srvr"] + ":" + str(p["port"])
             print "Account : \t" + p["acct"]
             print "Password : \t" + self.sanitize(p["data"])
             print "-"*60
@@ -139,4 +134,9 @@ class Keychain:
     
     def get_managed_configuration(self):
         for row in self.conn.execute("SELECT data FROM genp WHERE acct='Private' AND svce='com.apple.managedconfiguration' AND agrp='apple'"):
+            return BPlistReader.plistWithString(self.decrypt_data(row["data"]))
+        #HAX iOS 5
+        h1 = sqlite3.Binary(hashlib.sha1("Private").digest())
+        h2 = sqlite3.Binary(hashlib.sha1("com.apple.managedconfiguration").digest())
+        for row in self.conn.execute("SELECT data FROM genp WHERE acct=? AND svce=? AND agrp='apple'", (h1, h2)):
             return BPlistReader.plistWithString(self.decrypt_data(row["data"]))

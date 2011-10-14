@@ -19,8 +19,8 @@ def bruteforce_old_pass(h):
     hash = h["hash"].data
     f = hashMethods.get(h["hashMethod"])
 
-    if f:    
-        print "bruteforcing hash ", hash.encode("hex")
+    if f:
+        print "Bruteforcing hash %s (4 digits)" % hash.encode("hex")
         for i in xrange(10000):
             p = "%04d" % (i % 10000)
             if f(p,salt) == hash:

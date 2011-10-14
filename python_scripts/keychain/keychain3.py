@@ -1,6 +1,7 @@
 from keychain import Keychain
 from crypto.aes import AESdecryptCBC
 import hashlib
+from Crypto.Cipher import AES
 
 class Keychain3(Keychain):
     def __init__(self, filename, key835=None):
@@ -24,3 +25,21 @@ class Keychain3(Keychain):
             return "ERROR decrypting data : bad key ?"
 
         return data[:-20]
+    
+    def change_key835(self, newkey):
+        tables = {"genp": "SELECT rowid, data FROM genp",
+                  "inet": "SELECT rowid, data FROM inet",
+                  "cert": "SELECT rowid, data FROM cert",
+                  "keys": "SELECT rowid, data FROM keys"}
+        
+        for t in tables.keys():
+            for row in self.conn.execute(tables[t]):
+                rowid = row["rowid"]
+                data = str(row["data"])
+                iv = data[:16]
+                data = AES.new(self.key835, AES.MODE_CBC, iv).decrypt(data[16:])
+                data = AES.new(newkey, AES.MODE_CBC, iv).encrypt(data)
+                data = iv + data
+                data = buffer(data)
+                self.conn.execute("UPDATE %s SET data=? WHERE rowid=?" % t, (data, rowid))
+        self.conn.commit()

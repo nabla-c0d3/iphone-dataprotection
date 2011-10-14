@@ -4,7 +4,7 @@ import struct
 """
     iOS 4 keychain-2.db data column format
 
-    magic       0x00000000
+    version     0x00000000
     key class   0x00000008
                 kSecAttrAccessibleWhenUnlocked                      6
                 kSecAttrAccessibleAfterFirstUnlock                  7
@@ -16,6 +16,8 @@ import struct
     encrypted data (AES 256 CBC zero IV)
 """
 from keychain import Keychain
+from crypto.gcm import gcm_decrypt
+from util.bplist import BPlistReader
 
 KSECATTRACCESSIBLE = {
     6: "kSecAttrAccessibleWhenUnlocked",
@@ -33,7 +35,22 @@ class Keychain4(Keychain):
         Keychain.__init__(self, filename)
         self.keybag = keybag
 
-    def decrypt_data(self, blob):
+    def decrypt_item(self, row):
+        version, clas = struct.unpack("<LL", row["data"][0:8])
+        if version >= 2:
+            dict = self.decrypt_blob(row["data"])
+            dict["data"] = dict["v_Data"].data
+            dict["rowid"] = row["rowid"]
+            return dict
+        return Keychain.decrypt_item(self, row)
+
+    def decrypt_data(self, data):
+        data = self.decrypt_blob(data)
+        if type(data) == dict:
+            return data["v_Data"].data
+        return data
+
+    def decrypt_blob(self, blob):
         if blob == None:
             return ""
         
@@ -41,17 +58,25 @@ class Keychain4(Keychain):
             print "keychain blob length must be >= 48"
             return
 
-        magic, clas = struct.unpack("<LL",blob[0:8])
-
-        if magic != 0:
-            print "keychain blob first dword not 0"
+        version, clas = struct.unpack("<LL",blob[0:8])
+        
+        if version == 0:
+            wrappedkey = blob[8:8+40]
+            encrypted_data = blob[48:]
+        elif version == 2:
+            wrappedkey = blob[12:12+40]
+            encrypted_data = blob[52:-16]
+        else:
+            raise Exception("unknown keychain verson ", version)
             return
-
-        wrappedkey = blob[8:8+40]
-        encrypted_data = blob[48:]
+        
         unwrappedkey = self.keybag.unwrapKeyForClass(clas, wrappedkey)
         if not unwrappedkey:
-            print "keychain decrypt fail for item with class=%d (%s)" % (clas, KSECATTRACCESSIBLE.get(clas))
+            print "keychain unwrap fail for item with class=%d (%s)" % (clas, KSECATTRACCESSIBLE.get(clas))
             return
 
-        return AESdecryptCBC(encrypted_data, unwrappedkey, padding=True)
+        if version == 0:
+            return AESdecryptCBC(encrypted_data, unwrappedkey, padding=True)
+        elif version == 2:
+            binaryplist = gcm_decrypt(unwrappedkey, "", encrypted_data, "", blob[-16:])
+            return BPlistReader(binaryplist).parse()
