@@ -1,3 +1,4 @@
+import os
 import plistlib
 import struct
 import socket
@@ -16,10 +17,11 @@ class DeviceInfo(dict):
 
 	def save(self):
 		filename = "%s.plist" % self.get("dataVolumeUUID", "unk")
+		print "Saving %s/%s" % (os.getcwd() , filename)
 		plistlib.writePlist(self, filename)
 
 	def __del__(self):
-		self.save()
+		pass#self.save()
 
 class RamdiskToolClient(object):
 	def __init__(self, host="localhost", port=1999):
@@ -30,11 +32,14 @@ class RamdiskToolClient(object):
 		
 	def connect(self):
 		self.s = socket.socket()
-		self.s.connect((self.host, self.port))
+		try:
+			self.s.connect((self.host, self.port))
+		except:
+			raise Exception("Cannot cannot to ramdisk over usbmux, run \"python tcprelay.py -t 22:2222 1999:%d\"" % self.port)
 
 	def getDeviceInfos(self):
 		self.device_infos = self.send_req({"Request":"DeviceInfo"})
-		print "Device udid : ", self.device_infos.get("udid")
+		print "Device UDID :", self.device_infos.get("udid")
 		return DeviceInfo.create(self.device_infos)
 	
 	def downloadFile(self, path):

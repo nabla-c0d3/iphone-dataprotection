@@ -9,7 +9,10 @@ if __name__ == "__main__":
         sys.exit(0)
     filename = sys.argv[1]
     volume = EMFVolume(filename)
-    outdir = os.path.dirname(filename) + "/" + volume.volumeID().encode("hex") + "_" + os.path.basename(filename)
+    dirname = os.path.dirname(filename)
+    if dirname == "":
+        dirname = "."
+    outdir = dirname + "/" + volume.volumeID().encode("hex") + "_" + os.path.basename(filename)
     carveokdir = outdir + "/undelete/"
     carvenokdir = outdir + "/junk/"
     try:

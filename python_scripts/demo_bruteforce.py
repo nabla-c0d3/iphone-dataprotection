@@ -17,7 +17,14 @@ def checkPasscodeComplexity(rdclient):
 
 def bf_system():
     client = RamdiskToolClient()
-    di = client.getDeviceInfos()    
+    di = client.getDeviceInfos()
+    devicedir = di["udid"]
+    if os.getcwd().find(devicedir) == -1:
+        try:
+            os.mkdir(devicedir)
+        except:
+            pass
+        os.chdir(devicedir)
     key835 = di.get("key835").decode("hex")
     
     systembag = client.getSystemKeyBag()
@@ -33,11 +40,13 @@ def bf_system():
         kb.printClassKeys()
     else:
         keybags[kbuuid] = {"KeyBagKeys": systembag["KeyBagKeys"]}
+        di["KeyBagKeys"] = systembag["KeyBagKeys"]
         di.save()
         if checkPasscodeComplexity(client) == 0:
             print "Trying all 4-digits passcodes..."
             bf = client.bruteforceKeyBag(systembag["KeyBagKeys"].data)
             if bf:
+                di.update(bf)
                 keybags[kbuuid].update(bf)
             print bf
             print kb.unlockWithPasscodeKey(bf.get("passcodeKey").decode("hex"))
@@ -50,13 +59,7 @@ def bf_system():
         
     #keychain_blob =    client.downloadFile("/private/var/Keychains/keychain-2.db")
     keychain_blob = client.downloadFile("/mnt2/Keychains/keychain-2.db")
-    if keychain_blob:
-        write_file("keychain-2.db", keychain_blob)
-        keychain = Keychain4("keychain-2.db", kb)
-        keychain.print_all(False)
-        mc = keychain.get_managed_configuration()
-        print "Bruteforcing old passcodes"
-        for h in mc["history"]:
-            print bruteforce_old_pass(h)
-        
+    write_file("keychain-2.db", keychain_blob)
+    print "Downloaded keychain database, use keychain_tool.py to decrypt secrets"
+
 bf_system()

@@ -3,6 +3,9 @@ import plistlib
 from keystore.keybag import Keybag
 from util.ramdiskclient import RamdiskToolClient
 
+"""
+this wont work on iOS 5 unless the passcode was already bruteforced
+"""
 def escrow():
     client = RamdiskToolClient()
     di = client.getDeviceInfos()
@@ -25,6 +28,7 @@ def escrow():
         keybags[kbuuid] = {"KeyBagKeys": lockdown["EscrowBag"],
                             "passcode": bagkey,
                             "passcodeKey": passcodeKey.encode("hex")}
+        pl.update(keybags[kbuuid])
     else:
         passcodeKey = keybags[kbuuid].get("passcodeKey").decode("hex")
 
