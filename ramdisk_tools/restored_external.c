@@ -29,7 +29,7 @@ https://github.com/comex/bloggy/wiki/Redsn0w%2Busbmux
 
 void init_usb() {
     IOUSBDeviceDescriptionRef desc = IOUSBDeviceDescriptionCreateFromDefaults(kCFAllocatorDefault);
-    IOUSBDeviceDescriptionSetSerialString(desc, CFSTR("blah"));
+    IOUSBDeviceDescriptionSetSerialString(desc, CFSTR("ramdisk tool " __DATE__ " " __TIME__ ));
     
     CFArrayRef usb_interfaces = IOUSBDeviceDescriptionCopyInterfaces(desc);
     int i;
@@ -161,17 +161,36 @@ int main(int argc, char* argv[])
     
     int i;
     struct stat st;
-    printf("Waiting for /dev/disk0s2s1\n");
+    printf("Waiting for data partition\n");
     for(i=0; i < 10; i++)
     {
         if(!stat("/dev/disk0s2s1", &st))
+        {
+            system("/sbin/fsck_hfs  /dev/disk0s2s1");
             break;
+        }
+        if(!stat("/dev/disk0s1s2", &st))
+        {
+            system("/sbin/fsck_hfs  /dev/disk0s1s2");
+            break;
+        }
         sleep(5);
     }
-    
-    system("/sbin/fsck_hfs  /dev/disk0s2s1");
     system("mount /"); //make ramdisk writable
-    
+   
+    chmod("/var/root/.ssh/authorized_keys", 0600); 
+    chown("/var/root/.ssh/authorized_keys", 0, 0); 
+    chown("/var/root/.ssh", 0, 0); 
+    chown("/var/root/", 0, 0); 
+
+    printf(" #######  ##    ##\n");
+    printf("##     ## ##   ## \n");
+    printf("##     ## ##  ##  \n");
+    printf("##     ## #####   \n");
+    printf("##     ## ##  ##  \n");
+    printf("##     ## ##   ## \n"); 
+    printf(" #######  ##    ##\n");
+
     if(!fork())
     {
         printf("Running %s\n", execve_params[0]);

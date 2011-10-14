@@ -83,7 +83,7 @@ IOReturn IOKit_call(const char* serviceName,
     
     if (ret != kIOReturnSuccess)
     {
-        fprintf(stderr, "IOConnectCallMethod returned %x\n", ret);
+        fprintf(stderr, "IOConnectCallMethod on %s selector %d returned %x\n", serviceName, selector, ret);
     }
     
     return ret;

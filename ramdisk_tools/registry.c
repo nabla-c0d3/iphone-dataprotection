@@ -195,7 +195,7 @@ void search_wifi_mac_callback(void** context, io_iterator_t iterator) {
             {
                 if (!IORegistryEntryGetName(obj2,name))
                 {
-                    if (!strcmp(name, "sdio"))
+                    if (!strcmp(name, "sdio") || !strcmp(name, "wlan"))
                     {
                         if((t1 = IORegistryEntryCreateCFProperty(obj2, CFSTR("local-mac-address"), kCFAllocatorDefault, 0)) != 0)
                         {
@@ -223,10 +223,48 @@ void search_wifi_mac_callback(void** context, io_iterator_t iterator) {
     }
 }
 
+CFStringRef lookup_mac_address(const char* serviceName)
+{
+    unsigned char macaddrBytes[6];
+    CFStringRef res = NULL;
+
+    io_service_t service = IOServiceGetMatchingService(kIOMasterPortDefault, IOServiceNameMatching(serviceName));
+    
+    if(service)
+    {
+        CFDataRef macData = IORegistryEntryCreateCFProperty(service, CFSTR("local-mac-address"), kCFAllocatorDefault, 0);
+        if(macData != NULL)
+        {
+            CFDataGetBytes(macData, CFRangeMake(0,6), macaddrBytes);
+    
+            res = CFStringCreateWithFormat(kCFAllocatorDefault,
+                                        NULL,
+                                        CFSTR("%02x:%02x:%02x:%02x:%02x:%02x"),
+                                        macaddrBytes[0],
+                                        macaddrBytes[1],
+                                        macaddrBytes[2],
+                                        macaddrBytes[3],
+                                        macaddrBytes[4],
+                                        macaddrBytes[5]);
+            CFRelease(macData);
+        }
+        IOObjectRelease(service);
+    }
+    return res;
+}
+
 CFStringRef copy_wifi_mac_address() {
     CFStringRef wifimac = NULL;
     IONotificationPortRef notify_port = 0;
     io_iterator_t iterator = 0;
+    
+    wifimac = lookup_mac_address("sdio");
+    if (wifimac != NULL)
+        return wifimac;
+
+    wifimac = lookup_mac_address("wlan");
+    if (wifimac != NULL)
+        return wifimac;
     
     notify_port = IONotificationPortCreate(kIOMasterPortDefault);
     

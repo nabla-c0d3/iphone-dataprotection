@@ -9,11 +9,14 @@
 #include "registry.h"
 #include "util.h"
 
+    uint8_t lockers[960]={0};
+    uint8_t lwvm[80]={0};
+
 CFDictionaryRef device_info(int socket, CFDictionaryRef request)
 {
-    uint8_t lockers[960]={0};
     uint8_t dkey[40]={0};
     uint8_t emf[36]={0};
+
     struct HFSInfos hfsinfos={0};
     
     CFMutableDictionaryRef out  = CFDictionaryCreateMutable(kCFAllocatorDefault,
@@ -50,6 +53,11 @@ CFDictionaryRef device_info(int socket, CFDictionaryRef request)
         if (!AppleEffaceableStorage__getLockerFromBytes(LOCKER_EMF, lockers, 960, emf, 36))
         {
             doAES(&emf[4], &emf[4], 32, kIOAESAcceleratorCustomMask, key89B, NULL, kIOAESAcceleratorDecrypt, 128);
+        }
+        else if (!AppleEffaceableStorage__getLockerFromBytes(LOCKER_LWVM, lockers, 960, lwvm, 0x50))
+        {
+            doAES(lwvm, lwvm, 0x50, kIOAESAcceleratorCustomMask, key89B, NULL, kIOAESAcceleratorDecrypt, 128);
+            memcpy(&emf[4], &lwvm[32+16], 32);
         }
     }
     

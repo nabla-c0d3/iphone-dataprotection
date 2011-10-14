@@ -44,7 +44,7 @@ int AppleKeyStore_derivation(void* data, uint32_t dataLength, uint32_t iter, uin
     uint32_t xorkey = 1;
     
     uint32_t* buffer2 = data;
-    if (vers == 2)
+    if (vers >= 2)
     {
         buffer2 = malloc(dataLength);
         memcpy(buffer2, data, dataLength);
@@ -54,7 +54,7 @@ int AppleKeyStore_derivation(void* data, uint32_t dataLength, uint32_t iter, uin
         //version=1 xorKey alawys=1, buffer2 changes at each iter
         //version=2 xorKey changes at each iter, buffer2 is always the input (pbkdf2(passcode))
         r4 = AppleKeyStore_xorExpand((uint32_t*)buf1, DERIVATION_BUFFER_SIZE, buffer2, dataLength, xorkey);
-        if (vers == 2)
+        if (vers >= 2)
             xorkey = r4;
         
         if((ret = IOConnectCallStructMethod(conn, kIOAESAcceleratorTask, &in, IOAESStructSize1, &out, &IOAESStructSize1)) != kIOReturnSuccess)
@@ -72,7 +72,7 @@ int AppleKeyStore_derivation(void* data, uint32_t dataLength, uint32_t iter, uin
         AppleKeyStore_xorCompress((uint32_t*) buf2,  r4 * dataLength, data, dataLength);
         iter -= r4;
     }
-    if (vers == 2)
+    if (vers >= 2)
     {
         free(buffer2);
     }

@@ -17,6 +17,7 @@ AppleEffaceableStorage
 #define LOCKER_DKEY 0x446B6579
 #define LOCKER_EMF  0x454D4621
 #define LOCKER_BAG1 0x42414731
+#define LOCKER_LWVM 0x4C77564d
 
 struct EffaceableLocker
 {

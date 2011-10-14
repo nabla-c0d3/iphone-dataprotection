@@ -159,7 +159,7 @@ void serve_plist_rpc(int port, CFDictionaryRef handlers)
 {
     int quit = 0;
     int one=1;
-    printf("Listening on port %d\n", port);
+    printf("plist_rpc: listening on port %d\n", port);
     int sl = create_listening_socket(port);
     
     while(!quit)

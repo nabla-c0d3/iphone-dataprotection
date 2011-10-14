@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/types.h>
-#include <sys/mount.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include "AppleKeyStore.h"
 #include "IOKit.h"
@@ -60,18 +59,11 @@ char* bruteforceWithAppleKeyStore(CFDataRef kbkeys, int (*callback)(void*,int), 
 
 CFDictionaryRef load_system_keybag(int socket, CFDictionaryRef dict)
 {
-    char* diskname = "/dev/disk0s2s1";
-
     CFDictionaryRef kbdict = AppleKeyStore_loadKeyBag("/private/var/keybags","systembag");
     
     if (kbdict == NULL)
     {
-        printf("Trying to mount data partition\n");
-        
-        if (mount("hfs","/mnt2", MNT_RDONLY | MNT_NOATIME | MNT_NODEV | MNT_LOCAL, &diskname))
-        {
-            printf("FAIL: mount %s\n", diskname);
-        }
+        mountDataPartition("/mnt2");
         
         kbdict = AppleKeyStore_loadKeyBag("/mnt2/keybags","systembag");
         if (kbdict == NULL)
