@@ -43,6 +43,8 @@ Installing dependencies (Mac OS X)
     sudo ARCHFLAGS='-arch i386 -arch x86_64' easy_install pycrypto
     sudo easy_install M2crypto construct progressbar
 
+Mercurial (http://mercurial.selenic.com/) is also required to checkout the source code from the repository.
+
 Building custom ramdisk & kernel (Mac OS X)
 
     hg clone https://code.google.com/p/iphone-dataprotection/ 
@@ -73,6 +75,7 @@ The first step is to boot the ramdisk and custom kernel. This can be done easily
 
     ./redsn0w_mac_0.9.9b5/redsn0w.app/Contents/MacOS/redsn0w -i IOS5_IPSW_FOR_YOUR_DEVICE -r myramdisk.dmg -k kernelcache.release.n88.patched
 
+If the process fails with the "No identifying data fetched" error, make sure that the host computer is connected to the internet.
 After redsn0w is done, the ramdisk should boot in verbose mode. Once "OK" appears on the screen, the custom ramdisk has successfully started. The device is now accessible using ssh over usbmux. Use the following command to setup port redirections:
 
     #./tcprelay.sh

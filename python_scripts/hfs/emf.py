@@ -87,9 +87,10 @@ class EMFFile(HFSFile):
 class EMFVolume(HFSVolume):
     def __init__(self, file, **kwargs):
         super(EMFVolume,self).__init__(file, **kwargs)
-        pl = "%s/%s.plist" % (os.path.dirname(file), self.volumeID().encode("hex"))
-        if pl.startswith("/"):
-            pl = pl[1:]
+        pl = "%s.plist" % self.volumeID().encode("hex")
+        dirname = os.path.dirname(file)
+        if dirname != "":
+            pl = dirname + "/" + pl
         if not os.path.exists(pl):
             raise Exception("Missing keyfile %s" % pl)
         try:
