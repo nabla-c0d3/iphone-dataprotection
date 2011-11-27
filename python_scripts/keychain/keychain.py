@@ -13,6 +13,8 @@ printset = set(string.printable)
 
 def render_password(p):
     data = p["data"]
+    if not set(data).issubset(printset):
+        data = "<binary data> : " + data.encode("hex")
     if data != None and data.startswith("bplist") and data.find("\x00") != -1:
         pl = BPlistReader.plistWithString(p["data"])
         filename = "%s_%s_%d.plist" % (p["svce"],p["acct"],p["rowid"])
@@ -103,14 +105,14 @@ class Keychain:
 
         for p in self.get_passwords():
             print "Service :\t" + p["svce"]
-            print "Account :\t" + p["acct"]
+            print "Account :\t" + str(p["acct"])
             print "Password :\t" + self.sanitize(p["data"])
             print "Agrp :\t" + p["agrp"]
             print "-"*60
 
         for p in self.get_inet_passwords():
             print "Server : \t" + p["srvr"] + ":" + str(p["port"])
-            print "Account : \t" + p["acct"]
+            print "Account : \t" + str(p["acct"])
             print "Password : \t" + self.sanitize(p["data"])
             print "-"*60
 

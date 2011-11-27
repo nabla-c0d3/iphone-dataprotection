@@ -39,7 +39,10 @@ class Keychain4(Keychain):
         version, clas = struct.unpack("<LL", row["data"][0:8])
         if version >= 2:
             dict = self.decrypt_blob(row["data"])
-            dict["data"] = dict["v_Data"].data
+            if "v_Data" in dict:
+                dict["data"] = dict["v_Data"].data
+            else:
+                dict["data"] = "-- empty --"
             dict["rowid"] = row["rowid"]
             return dict
         return Keychain.decrypt_item(self, row)
