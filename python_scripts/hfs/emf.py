@@ -55,7 +55,7 @@ class EMFFile(HFSFile):
         self.filekey = filekey
         self.ivkey = None
         self.decrypt_offset = 0
-        if volume.cp_root.major_version == 4:
+        if volume.cp_major_version == 4:
             self.ivkey = hashlib.sha1(filekey).digest()[:16]
 
     def processBlock(self, block, lba):
@@ -102,12 +102,14 @@ class EMFVolume(HFSVolume):
             raise #Exception("Invalid keyfile")
         
         rootxattr =  self.getXattr(kHFSRootParentID, "com.apple.system.cprotect")
+        self.cp_major_version = None
         if rootxattr == None:
             print "Not an EMF image, no root com.apple.system.cprotec xattr"
         else:
             self.cp_root = cp_root_xattr.parse(rootxattr)
             print "cprotect version :", self.cp_root.major_version
             assert self.cp_root.major_version == 2 or self.cp_root.major_version == 4
+            self.cp_major_version = self.cp_root.major_version
     
     def ivForLBA(self, lba, add=True):
         iv = ""
@@ -122,10 +124,14 @@ class EMFVolume(HFSVolume):
         return iv
     
     def getFileKeyForCprotect(self, cp):
-        if self.cp_root.major_version == 2:
+        if self.cp_major_version == None:
+            self.cp_major_version = struct.unpack("<H", cp[:2])[0]
+        if self.cp_major_version == 2:
             cprotect = cprotect_xattr.parse(cp)
-        elif self.cp_root.major_version == 4:
+        elif self.cp_major_version == 4:
             cprotect = cprotect4_xattr.parse(cp)
+        else:
+            return
         return self.keystore.unwrapKeyForClass(cprotect.persistent_class, cprotect.persistent_key)
     
     def readFile(self, path, outFolder="./"):
