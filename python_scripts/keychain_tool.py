@@ -1,12 +1,13 @@
-import plistlib
-import sys
 from optparse import OptionParser
 from keystore.keybag import Keybag
 from keychain import keychain_load
 from keychain.managedconfiguration import bruteforce_old_pass
+from util import readPlist
+from keychain.keychain4 import Keychain4
+import plistlib
 
 def main():
-    parser = OptionParser(usage="%prog keychain.db keyfile.plist")
+    parser = OptionParser(usage="%prog keychain.db/keychain-backup.plist keyfile.plist/Manifest.plist")
     parser.add_option("-d", "--display", dest="display", action="store_true", default=False,
                   help="Show keychain items on stdout")
     parser.add_option("-s", "--sanitize", dest="sanitize", action="store_true", default=False,
@@ -23,9 +24,29 @@ def main():
         parser.print_help()
         return
     
-    p = plistlib.readPlist(args[1])
-    kb = Keybag.createWithPlist(p)
-    k = keychain_load(args[0], kb, p["key835"].decode("hex"))
+    p = readPlist(args[1])
+    
+    if p.has_key("BackupKeyBag"):
+        deviceKey = None
+        if p.has_key("key835"):
+            deviceKey = p["key835"].decode("hex")
+        else:
+            if not p["IsEncrypted"]:
+                print "This backup is not encrypted, without key 835 nothing in the keychain can be decrypted"
+            print "If you have key835 for device %s enter it (in hex)" % p["Lockdown"]["UniqueDeviceID"]
+            d = raw_input()
+            if len(d) == 32:
+                p["key835"] = d
+                deviceKey = d.decode("hex")
+                plistlib.writePlist(p, args[1])
+        
+        kb = Keybag.createWithBackupManifest(p, p.get("password",""), deviceKey)
+        if not kb:
+            return
+        k = Keychain4(args[0], kb)
+    else:
+        kb = Keybag.createWithPlist(p)
+        k = keychain_load(args[0], kb, p["key835"].decode("hex"))
     
     if options.display:
         k.print_all(options.sanitize)

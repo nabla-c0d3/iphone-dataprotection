@@ -2,11 +2,11 @@
 
 import sys, os
 from PyQt4 import QtGui, QtCore
-from keychain.keychain_backup4 import KeychainBackup4
-from Crypto.Cipher import AES
-from crypto.aeswrap import AESUnwrap
-from backups.backup4 import MBDB, getBackupKeyBag
-from pprint import pprint
+from backups.backup4 import MBDB
+from keychain.keychain4 import Keychain4
+from util.bplist import BPlistReader
+from keystore.keybag import Keybag
+from util import readPlist
 
 class KeychainTreeWidget(QtGui.QTreeWidget):
     def __init__(self, parent=None):
@@ -54,6 +54,8 @@ class KeychainWindow(QtGui.QWidget):
         self.passwordItems = KeychainTreeWidgetItem('Generic Passwords')
 
         for pwd in self.genericPasswords:
+            if not pwd.has_key('acct'):
+                continue
             if len(pwd['acct']) > 0:
                 item_title = '%s (%s)' % (pwd['svce'], pwd['acct'])
             else:
@@ -109,6 +111,17 @@ class KeychainWindow(QtGui.QWidget):
 def warn(msg):
     print "WARNING: %s" % msg
 
+def getBackupKeyBag(backupfolder, passphrase):
+    manifest = readPlist(backupfolder + "/Manifest.plist")
+
+    kb = Keybag(manifest["BackupKeyBag"].data)
+
+    if kb.unlockBackupKeybagWithPasscode(passphrase):
+        print "BackupKeyBag unlock OK"
+        return kb
+    else:
+        return None
+    
 def main():
     app = QtGui.QApplication(sys.argv)
     init_path = "{0:s}/Apple Computer/MobileSync/Backup".format(os.getenv('APPDATA'))
@@ -117,45 +130,19 @@ def main():
     if not kb:
         warn("Backup keybag unlock fail : wrong passcode?")
         return
-
     db = MBDB(dirname)
-    keychain_filename, keychain_record = db.get_file_by_name('keychain-backup.plist')
-
-    f = file(dirname + '/' + keychain_filename, 'rb')
-    keychain_data = f.read()
-    f.close()
-
-    if keychain_record.encryption_key is not None: # file is encrypted
-        if kb.classKeys.has_key(keychain_record.protection_class):
-            kek = kb.classKeys[keychain_record.protection_class]['KEY']
-
-            k = AESUnwrap(kek, keychain_record.encryption_key[4:])
-            if k is not None:
-                c = AES.new(k, AES.MODE_CBC)
-                keychain_data = c.decrypt(keychain_data)
-
-                padding = keychain_data[keychain_record.size:]
-                if len(padding) > AES.block_size or padding != chr(len(padding)) * len(padding):
-                    warn("Incorrect padding for file %s" % keychain_record.path)
-
-                keychain_data = keychain_data[:keychain_record.size]
-
-            else:
-                warn("Cannot unwrap key")
-        else:
-            warn("Cannot load encryption key for file %s" % f)
-
+    db.keybag = kb
+    filename, record = db.get_file_by_name("keychain-backup.plist")
+    keychain_data = db.read_file(filename, record)
+    
     f = file('keychain.tmp', 'wb')
     f.write(keychain_data)
     f.close()
 
-    # kc = KeychainBackup4('keychain-backup.plist', kb)
-    kc = KeychainBackup4('keychain.tmp', kb)
+    kc = Keychain4('keychain.tmp', kb)
 
     pwds = kc.get_passwords()
     inet_pwds = kc.get_inet_passwords()
-
-    print inet_pwds
 
     qb = KeychainWindow()
     qb.setGenericPasswords(pwds)

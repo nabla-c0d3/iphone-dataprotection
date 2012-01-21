@@ -36,16 +36,17 @@ class Keychain4(Keychain):
         self.keybag = keybag
 
     def decrypt_item(self, row):
-        if row["data"] != None:
-            version, clas = struct.unpack("<LL", row["data"][0:8])
-            if version >= 2:
-                dict = self.decrypt_blob(row["data"])
-                if "v_Data" in dict:
-                    dict["data"] = dict["v_Data"].data
-                else:
-                    dict["data"] = "-- empty --"
-                dict["rowid"] = row["rowid"]
-                return dict
+        version, clas = struct.unpack("<LL", row["data"][0:8])
+        if self.keybag.isBackupKeybag():
+            if clas >= 9 and not self.keybag.deviceKey:
+                return {}
+        if version >= 2:
+            dict = self.decrypt_blob(row["data"])
+            if not dict:
+                return {}
+            dict["data"] = dict["v_Data"].data
+            dict["rowid"] = row["rowid"]
+            return dict
         return Keychain.decrypt_item(self, row)
 
     def decrypt_data(self, data):

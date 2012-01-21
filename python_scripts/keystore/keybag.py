@@ -1,14 +1,12 @@
-import hashlib
+from crypto.PBKDF2 import PBKDF2
+from crypto.aes import AESdecryptCBC
+from crypto.aeswrap import AESUnwrap
+from crypto.curve25519 import curve25519
+from hashlib import sha256, sha1
+from util.bplist import BPlistReader
+from util.tlv import loopTLVBlocks, tlvToDict
 import hmac
 import struct
-from util.tlv import loopTLVBlocks, tlvToDict
-from crypto.aeswrap import AESUnwrap
-from pprint import pprint
-from crypto.PBKDF2 import PBKDF2
-from util.bplist import BPlistReader
-from crypto.aes import AESdecryptCBC
-from crypto.curve25519 import curve25519
-from hashlib import sha256
 
 KEYBAG_TAGS = ["VERS", "TYPE", "UUID", "HMCK", "WRAP", "SALT", "ITER", "PBKY"]
 CLASSKEY_TAGS = ["CLAS","WRAP","WPKY", "KTYP"]  #UUID
@@ -32,6 +30,7 @@ class Keybag(object):
         self.unlocked = False
         self.attrs = {}
         self.classKeys = {}
+        self.KeyBagKeys = None #DATASIGN blob
         self.parseBinaryBlob(data)
 
     @staticmethod
@@ -45,6 +44,8 @@ class Keybag(object):
         data = ""
         if pldict.has_key("KeyBagKeys"):
             data = pldict["KeyBagKeys"].data
+        else:
+            data = ""
         keystore = Keybag.createWithDataSignBlob(data, k835)
 
         if pldict.has_key("passcodeKey"):
@@ -57,30 +58,53 @@ class Keybag(object):
         return keystore
         
     @staticmethod
-    def createWithSystemkbfile(filename, wipeablekey, deviceKey=None):
-        mkb = BPlistReader.plistWithFile(filename)
-        decryptedPlist  = AESdecryptCBC(mkb["_MKBPAYLOAD"], wipeablekey, mkb["_MKBIV"], padding=True)
+    def createWithSystemkbfile(filename, bag1key, deviceKey=None):
+        if filename.startswith("bplist"): #HAX
+            mkb = BPlistReader.plistWithString(filename)
+        else:
+            mkb = BPlistReader.plistWithFile(filename)
+        try:
+            decryptedPlist  = AESdecryptCBC(mkb["_MKBPAYLOAD"].data, bag1key, mkb["_MKBIV"].data, padding=True)
+        except:
+            print "FAIL: AESdecryptCBC _MKBPAYLOAD => wrong BAG1 key ?"
+            return None
+        if not decryptedPlist.startswith("bplist"):
+            print "FAIL: decrypted _MKBPAYLOAD is not bplist"
+            return None
         decryptedPlist = BPlistReader.plistWithString(decryptedPlist)
-        blob = decryptedPlist["KeyBagKeys"]
+        blob = decryptedPlist["KeyBagKeys"].data
         return Keybag.createWithDataSignBlob(blob, deviceKey)
     
     @staticmethod
     def createWithDataSignBlob(blob, deviceKey=None):
         keybag = tlvToDict(blob)
         
-        kb = Keybag(keybag["DATA"])
+        kb = Keybag(keybag.get("DATA", ""))
         kb.deviceKey = deviceKey
+        kb.KeyBagKeys = blob
         
         if len(keybag.get("SIGN", "")):
             hmackey = AESUnwrap(deviceKey, kb.attrs["HMCK"])
             #hmac key and data are swapped (on purpose or by mistake ?)
-            sigcheck = hmac.new(keybag["DATA"], hmackey, hashlib.sha1).digest()
+            sigcheck = hmac.new(keybag["DATA"], hmackey, sha1).digest()
             if sigcheck == keybag.get("SIGN", ""):
                 print "Keybag: SIGN check OK"
             else:
                 print "Keybag: SIGN check FAIL"
         return kb
-        
+    
+    @staticmethod
+    def createWithBackupManifest(manifest, password, deviceKey=None):
+        kb = Keybag(manifest["BackupKeyBag"].data)
+        kb.deviceKey = deviceKey
+        if not kb.unlockBackupKeybagWithPasscode(password):
+            print "Cannot decrypt backup keybag. Wrong password ?"
+            return
+        return kb
+    
+    def isBackupKeybag(self):
+        return self.type == BACKUP_KEYBAG
+    
     def parseBinaryBlob(self, data):
         currentClassKey = None
         
@@ -135,7 +159,6 @@ class Keybag(object):
                 if not self.deviceKey:
                     continue
                 k = AESdecryptCBC(k, self.deviceKey)
-            
             classkey["KEY"] = k
         self.unlocked =  True
         return True
@@ -155,7 +178,7 @@ class Keybag(object):
             print "Keybag key %d missing or locked" % clas
             return ""
         ck = self.classKeys[clas]["KEY"]
-        if self.attrs["VERS"] >= 3 and clas == 2:
+        if self.attrs.get("VERS", 2) >= 3 and clas == 2:
             return self.unwrapCurve25519(clas, persistent_key)
         if len(persistent_key) == 0x28:
             return AESUnwrap(ck, persistent_key)
