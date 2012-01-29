@@ -70,7 +70,11 @@ class Keychain(object):
         for row in self.get_cert():
             cert = M2Crypto.X509.load_cert_der_string(row["data"])
             subject = cert.get_subject().as_text()
-            subject = str(cert.get_subject().get_entries_by_nid(M2Crypto.X509.X509_Name.nid['CN'])[0].get_data())
+            common_name = cert.get_subject().get_entries_by_nid(M2Crypto.X509.X509_Name.nid['CN'])
+            if len(common_name):
+                subject = str(common_name[0].get_data())
+            else:
+                subject = "cn_unknown_%d" % row["rowid"]
             certs[subject+ "_%s" % row["agrp"]] = cert
             
             for k in keys:
