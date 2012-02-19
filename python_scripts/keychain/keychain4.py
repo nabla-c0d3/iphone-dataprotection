@@ -44,7 +44,10 @@ class Keychain4(Keychain):
             dict = self.decrypt_blob(row["data"])
             if not dict:
                 return {}
-            dict["data"] = dict["v_Data"].data
+            if dict.has_key("v_Data"):
+                dict["data"] = dict["v_Data"].data
+            else:
+                dict["data"] = ""
             dict["rowid"] = row["rowid"]
             return dict
         return Keychain.decrypt_item(self, row)
