@@ -175,7 +175,7 @@ class EMFVolume(HFSVolume):
 
     def decryptFile(self, k,v):
         if v.recordType == kHFSPlusFileRecord:
-            filename = getString(k)
+            filename = getString(k).encode("utf-8")
             cprotect = self.getXattr(v.data.fileID, "com.apple.system.cprotect")
             if not cprotect:
                 self.notEncrypted.append(filename)
