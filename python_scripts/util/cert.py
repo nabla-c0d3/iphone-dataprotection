@@ -8,3 +8,9 @@ def RSA_KEY_DER_to_PEM(data):
     a.extend(chunks(base64.b64encode(data),64))
     a.append("-----END RSA PRIVATE KEY-----")
     return "\n".join(a)
+
+def CERT_DER_to_PEM(data):
+    a = ["-----BEGIN CERTIFICATE-----"]
+    a.extend(chunks(base64.b64encode(data),64))
+    a.append("-----END CERTIFICATE-----")
+    return "\n".join(a)

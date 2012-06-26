@@ -1,13 +1,23 @@
 from store import PlistKeychain, SQLiteKeychain
 from util import write_file
+from util.asciitables import print_table
 from util.bplist import BPlistReader
-from util.cert import RSA_KEY_DER_to_PEM
+from util.cert import RSA_KEY_DER_to_PEM, CERT_DER_to_PEM
 import M2Crypto
 import hashlib
 import plistlib
 import sqlite3
 import string
+import struct
 
+KSECATTRACCESSIBLE = {
+    6: "kSecAttrAccessibleWhenUnlocked",
+    7: "kSecAttrAccessibleAfterFirstUnlock",
+    8: "kSecAttrAccessibleAlways",
+    9: "kSecAttrAccessibleWhenUnlockedThisDeviceOnly",
+    10: "kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly",
+    11: "kSecAttrAccessibleAlwaysThisDeviceOnly"
+}
 printset = set(string.printable)
 
 def render_password(p):
@@ -77,6 +87,9 @@ class Keychain(object):
                 subject = "cn_unknown_%d" % row["rowid"]
             certs[subject+ "_%s" % row["agrp"]] = cert
             
+            #print subject
+            #print "Access :\t" + KSECATTRACCESSIBLE.get(row["clas"])
+            
             for k in keys:
                 if k["agrp"] == row["agrp"] and k["klbl"] == row["pkhh"]:
                     pkey_der = k["data"]
@@ -108,43 +121,76 @@ class Keychain(object):
         if pw.startswith("bplist"):
             return "<binary plist data>"
         elif not set(pw).issubset(printset):
-            pw = "<binary data> : " + pw.encode("hex")
+            pw = ">"+ pw.encode("hex")
+            #pw = "<binary data> : " + pw.encode("hex")
         if self.bsanitize:
             return pw[:2] + ("*" * (len(pw) - 2))
         return pw
 
     def print_all(self, sanitize=True):
         self.bsanitize = sanitize
-        print "-"*60
-        print " " * 20 + "Passwords"
-        print "-"*60
-
+        headers = ["Service", "Account", "Data", "Access group", "Protection class"]
+        rows = []
         for p in self.get_passwords():
-            print "Service :\t" + p["svce"]
-            print "Account :\t" + str(p["acct"])
-            print "Password :\t" + self.sanitize(p["data"])
-            print "Agrp :\t" + p["agrp"]
-            print "-"*60
+            row = [p.get("svce","?"),
+                   str(p.get("acct","?"))[:40],
+                   self.sanitize(p.get("data","?"))[:20],
+                   p.get("agrp","?"),
+                   KSECATTRACCESSIBLE.get(p["clas"])[18:]]
+            rows.append(row)
+        
+        print_table("Passwords", headers, rows)
+
+        headers = ["Server", "Account", "Data", "Access group", "Protection class"]
+        rows = []
 
         for p in self.get_inet_passwords():
-            print "Server : \t" + p["srvr"] + ":" + str(p["port"])
-            print "Account : \t" + str(p["acct"])
-            print "Password : \t" + self.sanitize(p["data"])
-            print "-"*60
+            addr = "?"
+            if p.has_key("srvr"):
+                addr = p["srvr"] + ":" + str(p["port"])
+            row = [addr,
+                   str(p.get("acct","?")),
+                   self.sanitize(p.get("data","?"))[:20],
+                   p.get("agrp","?"),
+                   KSECATTRACCESSIBLE.get(p["clas"])[18:]]
+            rows.append(row)
 
-        certs, pkeys = self.get_certs()
+        print_table("Internet Passwords", headers, rows)
 
-        print " " * 20 + "Certificates"
-        print "-"*60
-        for c in sorted(certs.keys()):
-            print c
+        headers = ["Id", "Common Name", "Access group", "Protection class"]
+        rows = []
+        c  = {}
 
-        print "-"*60
-        print " " * 20 + "Private keys"
-
-        for k in sorted(pkeys.keys()):
-            print k
-        print "-"*60
+        for row in self.get_cert():
+            subject = "?"
+            if row.has_key("data"):
+                cert = M2Crypto.X509.load_cert_der_string(row["data"])
+                subject = cert.get_subject().as_text()
+                common_name = cert.get_subject().get_entries_by_nid(M2Crypto.X509.X509_Name.nid['CN'])
+                if len(common_name):
+                    subject = str(common_name[0].get_data())
+                else:
+                    subject = "cn_unknown_%d" % row["rowid"]
+                c[hashlib.sha1(str(row["pkhh"])).hexdigest() + row["agrp"]] = subject
+            row = [str(row["rowid"]), 
+                   subject[:81],
+                   row.get("agrp","?")[:31],
+                   KSECATTRACCESSIBLE.get(row["clas"])[18:]
+                   ]
+            rows.append(row)
+        
+        print_table("Certificates", headers, rows)
+        
+        headers = ["Id", "Label", "Common Name", "Access group", "Protection class"]
+        rows = []
+        for row in self.get_keys():
+            subject = ""
+            if row.has_key("klbl"):
+                subject = c.get(hashlib.sha1(str(row["klbl"])).hexdigest() + row["agrp"], "")
+            row = [str(row["rowid"]), row.get("labl", "?")[:30], subject[:39], row.get("agrp","?")[:31],
+                KSECATTRACCESSIBLE.get(row["clas"])[18:]]
+            rows.append(row)
+        print_table("Keys", headers, rows)
 
     def get_push_token(self):
         for p in self.get_passwords():
@@ -168,3 +214,24 @@ class Keychain(object):
         self._diff(older, res, Keychain.get_inet_passwords, "inet")
         self._diff(older, res, Keychain.get_cert, "cert")
         self._diff(older, res, Keychain.get_keys, "keys")
+
+    def cert(self, rowid, filename=""):
+        for row in self.get_cert():
+            if row["rowid"] == rowid:
+                blob = CERT_DER_to_PEM(row["data"])
+                if filename:
+                    write_file(filename, blob)
+                cert = M2Crypto.X509.load_cert_der_string(row["data"])
+                print cert.as_text()
+                return
+
+    def key(self, rowid, filename=""):
+        for row in self.get_keys():
+            if row["rowid"] == rowid:
+                blob =  RSA_KEY_DER_to_PEM(row["data"])
+                if filename:
+                    write_file(filename, blob)
+                #k = M2Crypto.RSA.load_key_string(blob)
+                print blob
+                return
+                    

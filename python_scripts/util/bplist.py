@@ -55,6 +55,8 @@ class BPlistReader(object):
             ot = '!H'
         elif sz == 4:
             ot = '!I'
+        elif sz == 8:
+            ot = '!Q'
         else:
             raise Exception('int unpack size '+str(sz)+' unsupported')
         return struct.unpack(ot, s)[0]
@@ -214,7 +216,7 @@ class BPlistReader(object):
         self.offset_table = self.data[self.table_offset:-32]
         self.offsets = []
         ot = self.offset_table
-        for i in range(self.number_of_objects):
+        for i in xrange(self.number_of_objects):
             offset_entry = ot[:self.offset_size]
             ot = ot[self.offset_size:]
             self.offsets.append(self.__unpackIntStruct(self.offset_size, offset_entry))

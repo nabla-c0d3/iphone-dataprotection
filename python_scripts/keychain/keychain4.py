@@ -31,7 +31,7 @@ KSECATTRACCESSIBLE = {
 class Keychain4(Keychain):
     def __init__(self, filename, keybag):
         if not keybag.unlocked:
-            raise Exception("Keychain4 object created with locked keybag")
+            print "Keychain object created with locked keybag, some items won't be decrypted"
         Keychain.__init__(self, filename)
         self.keybag = keybag
 
@@ -43,13 +43,15 @@ class Keychain4(Keychain):
         if version >= 2:
             dict = self.decrypt_blob(row["data"])
             if not dict:
-                return {}
+                return {"clas": clas, "rowid": row["rowid"]}
             if dict.has_key("v_Data"):
                 dict["data"] = dict["v_Data"].data
             else:
                 dict["data"] = ""
             dict["rowid"] = row["rowid"]
+            dict["clas"] = clas
             return dict
+        row["clas"] = clas
         return Keychain.decrypt_item(self, row)
 
     def decrypt_data(self, data):
@@ -67,20 +69,20 @@ class Keychain4(Keychain):
             return
 
         version, clas = struct.unpack("<LL",blob[0:8])
-        
+        self.clas=clas
         if version == 0:
             wrappedkey = blob[8:8+40]
             encrypted_data = blob[48:]
         elif version == 2:
-            wrappedkey = blob[12:12+40]
-            encrypted_data = blob[52:-16]
+            l = struct.unpack("<L",blob[8:12])[0]
+            wrappedkey = blob[12:12+l]
+            encrypted_data = blob[12+l:-16]
         else:
             raise Exception("unknown keychain verson ", version)
             return
         
-        unwrappedkey = self.keybag.unwrapKeyForClass(clas, wrappedkey)
+        unwrappedkey = self.keybag.unwrapKeyForClass(clas, wrappedkey, False)
         if not unwrappedkey:
-            print "keychain unwrap fail for item with class=%d (%s)" % (clas, KSECATTRACCESSIBLE.get(clas))
             return
 
         if version == 0:

@@ -3,7 +3,6 @@
 from Crypto.Cipher import AES
 from Crypto.Util import strxor
 from struct import pack, unpack
-from util.bplist import BPlistReader
 
 def gcm_rightshift(vec):
     for x in range(15, 0, -1):
