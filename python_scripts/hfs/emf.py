@@ -1,14 +1,16 @@
-import plistlib
-import os
-import struct
+from Crypto.Cipher import AES
+from construct import Struct, ULInt16, ULInt32, String
+from construct.macros import ULInt64, Padding, If
 from hfs import HFSVolume, HFSFile
 from keystore.keybag import Keybag
-from structs import HFSPlusVolumeHeader, kHFSPlusFileRecord, getString
-from construct import Struct, ULInt16,ULInt32, String
-from Crypto.Cipher import AES
-from construct.macros import ULInt64, Padding
-from structs import kHFSRootParentID
+from structs import HFSPlusVolumeHeader, kHFSPlusFileRecord, getString, \
+    kHFSRootParentID
+from util import search_plist
+from util.bruteforce import loadKeybagFromVolume
 import hashlib
+import os
+import plistlib
+import struct
 
 """
 iOS >= 4 raw images
@@ -32,18 +34,18 @@ cprotect_xattr = Struct("cprotect_xattr",
     ULInt32("flags"),
     ULInt32("persistent_class"),
     ULInt32("key_size"),
-    String("persistent_key", length=0x28)
-)
-
-cprotect4_xattr = Struct("cprotect_xattr",
-    ULInt16("xattr_major_version"),
-    ULInt16("xattr_minor_version"),
-    ULInt32("flags"),
-    ULInt32("persistent_class"),
-    ULInt32("key_size"),
-    Padding(20),
+    If(lambda ctx: ctx["xattr_major_version"] >= 4, Padding(20)),
     String("persistent_key", length=lambda ctx: ctx["key_size"])
 )
+NSProtectionNone = 4
+
+PROTECTION_CLASSES={
+    1:"NSFileProtectionComplete",
+    2:"NSFileProtectionCompleteUnlessOpen",
+    3:"NSFileProtectionCompleteUntilFirstUserAuthentication",
+    4:"NSFileProtectionNone",
+    5:"NSFileProtectionRecovery?"
+}
 
 #HAX: flags set in finderInfo[3] to tell if the image was already decrypted
 FLAG_DECRYPTING = 0x454d4664  #EMFd big endian
@@ -78,39 +80,44 @@ class EMFFile(HFSFile):
         for extent in self.extents:
             for i in xrange(extent.blockCount):
                 lba = extent.startBlock+i
-                data = self.volume.read(lba*bs, bs)
+                data = self.volume.readBlock(lba)
                 if len(data) == bs:
                     clear = self.processBlock(data, lba)
                     self.volume.writeBlock(lba, clear)
 
 
 class EMFVolume(HFSVolume):
-    def __init__(self, file, **kwargs):
-        super(EMFVolume,self).__init__(file, **kwargs)
-        pl = "%s.plist" % self.volumeID().encode("hex")
-        dirname = os.path.dirname(file)
-        if dirname != "":
-            pl = dirname + "/" + pl
-        if not os.path.exists(pl):
-            raise Exception("Missing keyfile %s" % pl)
+    def __init__(self, bdev, device_infos, **kwargs):
+        super(EMFVolume,self).__init__(bdev, **kwargs)
+        volumeid = self.volumeID().encode("hex")
+
+        if not device_infos:
+            dirname = os.path.dirname(bdev.filename)
+            device_infos = search_plist(dirname, {"dataVolumeUUID":volumeid})
+            if not device_infos:
+                raise Exception("Missing keyfile")
         try:
-            pldict = plistlib.readPlist(pl)
-            self.emfkey = pldict["EMF"].decode("hex")
-            self.lbaoffset = pldict["dataVolumeOffset"]
-            self.keystore = Keybag.createWithPlist(pldict)
+            self.emfkey = None
+            if device_infos.has_key("EMF"):
+                self.emfkey = device_infos["EMF"].decode("hex")
+            self.lbaoffset = device_infos["dataVolumeOffset"]
+            self.keybag = Keybag.createWithPlist(device_infos)
         except:
             raise #Exception("Invalid keyfile")
         
         rootxattr =  self.getXattr(kHFSRootParentID, "com.apple.system.cprotect")
         self.cp_major_version = None
+        self.cp_root = None
         if rootxattr == None:
-            print "Not an EMF image, no root com.apple.system.cprotec xattr"
+            print "(No root com.apple.system.cprotect xattr)"
         else:
             self.cp_root = cp_root_xattr.parse(rootxattr)
-            print "cprotect version :", self.cp_root.major_version
+            ver = self.cp_root.major_version
+            print "cprotect version : %d (iOS %d)" % (ver, 4 + int(ver != 2))
             assert self.cp_root.major_version == 2 or self.cp_root.major_version == 4
             self.cp_major_version = self.cp_root.major_version
-    
+        self.keybag = loadKeybagFromVolume(self, device_infos)
+            
     def ivForLBA(self, lba, add=True):
         iv = ""
         if add:
@@ -126,35 +133,39 @@ class EMFVolume(HFSVolume):
     def getFileKeyForCprotect(self, cp):
         if self.cp_major_version == None:
             self.cp_major_version = struct.unpack("<H", cp[:2])[0]
-        if self.cp_major_version == 2:
-            cprotect = cprotect_xattr.parse(cp)
-        elif self.cp_major_version == 4:
-            cprotect = cprotect4_xattr.parse(cp)
-        else:
-            return
-        return self.keystore.unwrapKeyForClass(cprotect.persistent_class, cprotect.persistent_key)
+        cprotect = cprotect_xattr.parse(cp)
+        return self.keybag.unwrapKeyForClass(cprotect.persistent_class, cprotect.persistent_key)
     
-    def readFile(self, path, outFolder="./"):
+    def getFileKeyForFileId(self, fileid):
+        cprotect = self.getXattr(fileid, "com.apple.system.cprotect")
+        if cprotect == None:
+            return None
+        return self.getFileKeyForCprotect(cprotect)
+
+    def readFile(self, path, outFolder="./", returnString=False):
         k,v = self.catalogTree.getRecordFromPath(path)
         if not v:
             print "File %s not found" % path
             return
         assert v.recordType == kHFSPlusFileRecord
         cprotect = self.getXattr(v.data.fileID, "com.apple.system.cprotect")
-        if cprotect == None:
-            print "cprotect attr not found, reading normally"
-            return super(EMFVolume, self).readFile(path)
+        if cprotect == None or not self.cp_root:
+            #print "cprotect attr not found, reading normally"
+            return super(EMFVolume, self).readFile(path, returnString=returnString)
         filekey = self.getFileKeyForCprotect(cprotect)
         if not filekey:
-            print "Cannot unwrap file key for file %s protection_class=%d" % (path, cprotect.protection_class)
+            print "Cannot unwrap file key for file %s protection_class=%d" % (path, cprotect_xattr.parse(cprotect).persistent_class)
             return
         f = EMFFile(self, v.data.dataFork, v.data.fileID, filekey)
+        if returnString:
+            return f.readAllBuffer()
         f.readAll(outFolder + os.path.basename(path))
+        return True
 
     def flagVolume(self, flag):
         self.header.finderInfo[3] = flag
         h = HFSPlusVolumeHeader.build(self.header)
-        return self.write(0x400, h)
+        return self.bdev.write(0x400, h)
         
     def decryptAllFiles(self):
         if self.header.finderInfo[3] == FLAG_DECRYPTING:
@@ -188,3 +199,20 @@ class EMFVolume(HFSVolume):
             f = EMFFile(self, v.data.dataFork, v.data.fileID, fk)
             f.decryptFile()
             self.decryptedCount += 1
+
+    def list_protected_files(self):
+        self.protected_dict = {}
+        self.xattrTree.traverseLeafNodes(callback=self.inspectXattr)
+        for k in self.protected_dict.keys():
+            print k
+            for v in self.protected_dict[k]: print "\t",v
+            print ""
+            
+    def inspectXattr(self, k, v):
+        if getString(k) == "com.apple.system.cprotect" and k.fileID != kHFSRootParentID:
+            c = cprotect_xattr.parse(v.data)
+            if c.persistent_class != NSProtectionNone:
+                #desc = "%d %s" % (k.fileID, self.getFullPath(k.fileID))
+                desc = "%s" % self.getFullPath(k.fileID)
+                self.protected_dict.setdefault(PROTECTION_CLASSES.get(c.persistent_class),[]).append(desc)
+                #print k.fileID, self.getFullPath(k.fileID), PROTECTION_CLASSES.get(c.persistent_class)

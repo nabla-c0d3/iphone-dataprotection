@@ -1,8 +1,8 @@
 import hashlib
 from Crypto.Cipher import AES
-from emf import cprotect_xattr, cprotect4_xattr, EMFFile
+from emf import cprotect_xattr, EMFFile
 from structs import *
-from util import write_file
+from util import write_file, sizeof_fmt
 
 """
 Implementation of the following paper :
@@ -55,7 +55,8 @@ def carveHFSVolumeJournal(volume):
     return f.values()
 
 
-magics=["SQLite", "bplist", "<?xml", "\xFF\xD8\xFF", "\xCE\xFA\xED\xFE"]
+magics=["SQLite", "bplist", "<?xml", "\xFF\xD8\xFF", "\xCE\xFA\xED\xFE", "\x89PNG", "\x00\x00\x00\x1CftypM4A",
+        "\x00\x00\x00\x14ftypqt"]
 """
 HAX: should do something better like compute entropy or something
 """
@@ -70,14 +71,15 @@ carve the journal for deleted cprotect xattrs and file records
 """
 def carveEMFVolumeJournal(volume):
     journal = volume.readJournal()
+    print "Journal size : %s" % sizeof_fmt(len(journal))
     hdr = journal_header.parse(journal)
     sector_size = hdr.jhdr_size
     nodeSize = volume.catalogTree.nodeSize
+    print "Collecting existing file ids"
+    fileIds = volume.listAllFileIds()
+    print "%d file IDs" % len(fileIds.keys())
     files = {}
     keys = {}
-    cprotect_struct_type = cprotect_xattr
-    if volume.cp_root.major_version >= 4:
-        cprotect_struct_type = cprotect4_xattr
     
     for i in xrange(0,len(journal),sector_size):
         for k,v in carveBtreeNode(journal[i:i+nodeSize],HFSPlusCatalogKey, HFSPlusCatalogData):
@@ -86,21 +88,21 @@ def carveEMFVolumeJournal(volume):
                 h = hashlib.sha1(HFSPlusCatalogKey.build(k)).digest()
                 if files.has_key(h):
                     continue
-                if volume.catalogTree.searchByCNID(v.data.fileID) == (None, None):
+                if not fileIds.has_key(v.data.fileID):
                     #we only keep files where the first block is not marked as in use
                     if volume.isBlockInUse(v.data.dataFork.HFSPlusExtentDescriptor[0].startBlock) == False:
                         print "Found deleted file record", v.data.fileID, name
                         files[h] = (name,v)
         for k,v in carveBtreeNode(journal[i:i+nodeSize],HFSPlusAttrKey, HFSPlusAttrData):
             if getString(k) == "com.apple.system.cprotect":
-                if volume.catalogTree.searchByCNID(k) == (None, None):
+                if not fileIds.has_key(k.fileID):
                     filekeys = keys.setdefault(k.fileID, [])
                     try:
-                        cprotect = cprotect_struct_type.parse(v.data)
+                        cprotect = cprotect_xattr.parse(v.data)
                     except:
                         continue
                     #assert cprotect.xattr_major_version == 2
-                    filekey = volume.keystore.unwrapKeyForClass(cprotect.persistent_class, cprotect.persistent_key)
+                    filekey = volume.keybag.unwrapKeyForClass(cprotect.persistent_class, cprotect.persistent_key)
                     if filekey and not filekey in filekeys:
                         print "Found key for file", k.fileID
                         filekeys.append(filekey)
@@ -132,10 +134,10 @@ def do_emf_carving(volume, carveokdir, carvenokdir):
             ff = EMFFile(volume,vv.data.dataFork, vv.data.fileID, filekey, deleted=True)
             data = ff.readAllBuffer()
             if isDecryptedCorrectly(data):
-                write_file(carveokdir + "%s_%s" % (filekey.encode("hex")[:8],name.replace("/","_")),data)
+                write_file(carveokdir + "%d_%s" % (vv.data.fileID, name.replace("/","_")),data)
                 n += 1
             else:
-                write_file(carvenokdir + "%s_%s" % (filekey.encode("hex")[:8],name.replace("/","_")),data)
+                write_file(carvenokdir + "%d_%s" % (vv.data.fileID, name.replace("/","_")),data)
         if not filekeys.has_key(vv.data.fileID):
             print "Missing file key for", name
         else:

@@ -2,13 +2,14 @@ import os
 import sys
 from hfs.emf import EMFVolume
 from hfs.journal import do_emf_carving
+from util.bdev import FileBlockDevice
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print "Usage: emf_undelete.py disk_image.bin"
         sys.exit(0)
     filename = sys.argv[1]
-    volume = EMFVolume(filename)
+    volume = EMFVolume(FileBlockDevice(filename), None)
     dirname = os.path.dirname(filename)
     if dirname == "":
         dirname = "."

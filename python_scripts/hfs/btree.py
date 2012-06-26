@@ -2,6 +2,7 @@ from structs import *
 
 """
 Probably buggy
+HAX, only works on case SENSITIVE
 """
 
 class BTree(object):
@@ -13,6 +14,7 @@ class BTree(object):
         btnode = BTNodeDescriptor.parse(block0)
         assert btnode.kind == kBTHeaderNode
         self.header = BTHeaderRec.parse(block0[BTNodeDescriptor.sizeof():])
+        assert self.header.keyCompareType == 0 or self.header.keyCompareType == 0 or kHFSBinaryCompare
         #TODO: do more testing when nodeSize != blockSize
         self.nodeSize = self.header.nodeSize
         self.nodesInBlock = file.blockSize / self.header.nodeSize
@@ -20,6 +22,9 @@ class BTree(object):
         #print file.blockSize , self.header.nodeSize
         self.lastRecordNumber = 0
         type, (hdr, maprec) = self.readBtreeNode(0)
+        assert len(maprec) == self.nodeSize - 256
+        if self.header.totalNodes / 8 > len(maprec):
+            pass #TODO: handle map records
         self.maprec = maprec
 
     def isNodeInUse(self, nodeNumber):
@@ -38,7 +43,7 @@ class BTree(object):
     
     #convert construct structure to tuple
     def getComparableKey(self, k):
-        raise "implement in subclass"
+        raise Exception("implement in subclass")
     
     def compareKeys(self, k1, k2):
         k2 = self.getComparableKey(k2) 
@@ -61,10 +66,12 @@ class BTree(object):
         self.lastbtnode = btnode = BTNodeDescriptor.parse(node)
 
         if btnode.kind == kBTHeaderNode:
-            #XXX
-            offsets = Array(btnode.numRecords, UBInt16("off")).parse(node[-2*btnode.numRecords:])
+            assert btnode.numRecords == 3
+            end = self.nodeSize - 8 #2*4
+            offsets = Array(btnode.numRecords+1, UBInt16("off")).parse(node[end:])
+            assert offsets[-4] == end
             hdr = BTHeaderRec.parse(node[BTNodeDescriptor.sizeof():])
-            maprec = node[offsets[-3]:]
+            maprec = node[offsets[-3]:end]
             return kBTHeaderNode, [hdr, maprec]
         elif btnode.kind == kBTIndexNode:
             recs = []
@@ -94,6 +101,8 @@ class BTree(object):
             node = self.header.rootNode
             
         type, stuff = self.readBtreeNode(node)
+        if len(stuff) == 0:
+            return None, None
         
         if type == kBTIndexNode: 
             for i in xrange(len(stuff)):
@@ -109,7 +118,7 @@ class BTree(object):
                 if res == 0:
                     return k, v
                 if res < 0:
-                    break
+                    return None, None
                 self.lastRecordNumber += 1
         return None, None
 
@@ -162,16 +171,33 @@ class BTree(object):
             recordNumber = 0
         return kv
 
+    def getLBAsHax(self):
+        nodes = [self.lastnodeNumber]
+        n = self.lastbtnode
+        for i in xrange(2):
+            nodes.append(self.lastbtnode.bLink)
+            self.readBtreeNode(self.lastbtnode.bLink)
+        self.lastbtnode = n
+        for i in xrange(2):
+            nodes.append(self.lastbtnode.fLink)
+            self.readBtreeNode(self.lastbtnode.fLink)
+        res = []
+        for n in nodes:
+            res.append(self.file.getLBAforBlock(n * self.blocksForNode))
+        return res
+        
 class CatalogTree(BTree):
-    def __init__(self, file):
+    def __init__(self, file, volume):
         super(CatalogTree,self).__init__(file, HFSPlusCatalogKey, HFSPlusCatalogData)
+        self.volume = volume
     
     def printLeaf(self, k, d):
         if d.recordType == kHFSPlusFolderRecord or d.recordType == kHFSPlusFileRecord:
             print getString(k)
-
+   
     def getComparableKey(self, k2):
-        return (k2. parentID, getString(k2))
+        #XXX http://dubeiko.com/development/FileSystems/HFSPLUS/tn1150.html#StringComparisonAlgorithm
+        return (k2.parentID, getString(k2))
     
     def searchByCNID(self, cnid):
         threadk, threadd = self.search((cnid, ""))
@@ -186,6 +212,8 @@ class CatalogTree(BTree):
         if path == "/":
             return self.searchByCNID(kHFSRootFolderID)
         parentId=kHFSRootFolderID
+        i = 1
+        k, v = None, None
         for p in path.split("/")[1:]:
             if p == "":
                 break
@@ -195,8 +223,18 @@ class CatalogTree(BTree):
 
             if v.recordType == kHFSPlusFolderRecord:
                 parentId = v.data.folderID
+            elif v.recordType == kHFSPlusFileRecord and is_symlink(v.data):
+                linkdata = self.volume.readFileByRecord(v)
+                print "symlink %s => %s" % (p, linkdata)
+                if not linkdata:
+                    return None, None
+                t = path.split("/")
+                t[i] = linkdata
+                newpath = "/".join(t)
+                return self.getRecordFromPath(newpath)
             else:
                 break
+            i += 1
         return k,v
     
 class ExtentsOverflowTree(BTree):

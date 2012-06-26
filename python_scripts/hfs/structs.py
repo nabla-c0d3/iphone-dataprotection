@@ -7,6 +7,19 @@ http://developer.apple.com/library/mac/#technotes/tn/tn1150.html
 def getString(obj):
     return obj.HFSUniStr255.unicode
 
+S_IFLNK  = 0120000
+kSymLinkFileType  = 0x736C6E6B
+kSymLinkCreator   = 0x72686170
+kHardLinkFileType = 0x686C6E6B
+kHFSPlusCreator   = 0x6866732B
+
+kHFSCaseFolding = 0xCF
+kHFSBinaryCompare = 0xBC
+
+
+def is_symlink(rec):
+    return rec.FileInfo.fileCreator == kSymLinkCreator and rec.FileInfo.fileType == kSymLinkFileType
+
 kHFSRootParentID            = 1
 kHFSRootFolderID            = 2
 kHFSExtentsFileID           = 3
@@ -242,7 +255,7 @@ HFSPlusCatalogData = Struct("HFSPlusCatalogData",
         kHFSPlusFolderThreadRecord: HFSPlusCatalogThread,
         kHFSPlusFileThreadRecord: HFSPlusCatalogThread
     },
-    #default=HFSPlusCatalogFolder #XXX: should not reach
+    default=HFSPlusCatalogFolder #XXX: should not reach
     )
 )
 
