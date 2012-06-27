@@ -40,7 +40,7 @@ char* bruteforceWithAppleKeyStore(CFDataRef kbkeys, int (*callback)(void*,int), 
     for(i=0; i < 10000; i++)
     {
         sprintf(passcode, "%04d", i);
-        if (callback != NULL && !(i % 100))
+        if (callback != NULL && !(i % 10))
         {
             if (callback(ctx, i) == -1)
             {
@@ -210,6 +210,73 @@ CFDictionaryRef download_file(int socket, CFDictionaryRef dict)
 
     CFDictionaryAddValue(out, CFSTR("Data"), data);
     CFRelease(data);
+
+    return out;
+}
+
+CFDictionaryRef remote_aes(int socket, CFDictionaryRef dict)
+{
+    uint8_t* input2 = NULL;
+    uint32_t len = 0;
+    uint8_t* iv2 = NULL;
+    uint32_t keyMask = 0;
+    uint32_t mode = 0;
+    uint32_t bits = 0;
+    
+    CFNumberRef km =  CFDictionaryGetValue(dict, CFSTR("keyMask"));
+    if(km == NULL || CFGetTypeID(km) != CFNumberGetTypeID())
+        return NULL;
+    CFNumberGetValue(km, kCFNumberIntType, &keyMask);
+    
+    CFNumberRef m =  CFDictionaryGetValue(dict, CFSTR("mode"));
+    if(m == NULL || CFGetTypeID(m) != CFNumberGetTypeID())
+        return NULL;
+    CFNumberGetValue(m, kCFNumberIntType, &mode);
+    
+    CFNumberRef b =  CFDictionaryGetValue(dict, CFSTR("bits"));
+    if(b == NULL || CFGetTypeID(b) != CFNumberGetTypeID())
+        return NULL;
+    CFNumberGetValue(b, kCFNumberIntType, &bits);
+    
+    CFDataRef input = CFDictionaryGetValue(dict, CFSTR("input"));
+    if(input == NULL || CFGetTypeID(input) != CFDataGetTypeID())
+        return NULL;
+
+    CFDataRef iv = CFDictionaryGetValue(dict, CFSTR("iv"));
+    if(iv != NULL)
+    {
+        if (CFGetTypeID(iv) != CFDataGetTypeID())
+            return NULL;
+        iv2 = CFDataGetBytePtr(iv);
+    }
+    len = CFDataGetLength(input);
+    if (len % 16 != 0)
+    {
+        return NULL;
+    }
+    input2 = malloc(len);
+    if (input2 == NULL)
+    {
+        return NULL;
+    }
+
+    memcpy(input2, CFDataGetBytePtr(input), len);
+    
+    uint32_t ret = doAES(input2, input2, len, keyMask, NULL, iv2, mode, bits);
+
+    CFMutableDictionaryRef out  = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);	
+    
+    CFNumberRef retCode = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &ret);
+    CFDictionaryAddValue(out, CFSTR("returnCode"), retCode);
+    CFRelease(retCode);
+ 
+    if (ret == 0)
+    {
+        CFDataRef dd = CFDataCreate(kCFAllocatorDefault, input2, len);
+        CFDictionaryAddValue(out, CFSTR("data"), dd);
+        CFRelease(dd);
+    }
+    free(input2);
 
     return out;
 }

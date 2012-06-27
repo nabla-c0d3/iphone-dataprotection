@@ -8,9 +8,57 @@ https://github.com/Gojohnnyboi/restored_pwn
 #include <errno.h>
 #include <sys/sysctl.h>
 #include <sys/mman.h>
+#include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 #include <CommonCrypto/CommonDigest.h>
 #include "util.h"
+
+//from libmobilegestalt.dylib
+CFDataRef copyDataFromChosen(CFStringRef key)
+{
+    io_registry_entry_t chosen = IORegistryEntryFromPath(kIOMasterPortDefault, "IODeviceTree:/chosen");
+    if (chosen)
+    {
+        CFDataRef res = IORegistryEntryCreateCFProperty(chosen, key, kCFAllocatorDefault, 0);
+        IOObjectRelease(chosen);
+        return res;
+    }
+    return NULL;
+}
+CFStringRef copyStringFromChosen(CFStringRef key)
+{
+    CFStringRef s = NULL;
+    CFDataRef data = copyDataFromChosen(key);
+    if(data == NULL)
+        return NULL;
+
+    if(CFGetTypeID(data) == CFDataGetTypeID())
+    {
+        s = CFStringCreateWithCString(kCFAllocatorDefault, (const char*) CFDataGetBytePtr(data), kCFStringEncodingUTF8);
+    }
+    CFRelease(data);
+    return s;
+}
+
+CFNumberRef copyNumberFromChosen(CFStringRef key)
+{
+    CFNumberRef num = NULL;
+    CFDataRef data = copyDataFromChosen(key);
+    
+    if(data == NULL)
+        return NULL;
+    if(CFGetTypeID(data) == CFDataGetTypeID())
+    {
+        int len = CFDataGetLength(data);
+        
+        num = CFNumberCreate(kCFAllocatorDefault,
+                             len == 4 ? kCFNumberSInt32Type : kCFNumberSInt64Type,
+                             CFDataGetBytePtr(data)
+                             );
+    }
+    CFRelease(data);
+    return num;
+}
 
 io_service_t get_io_service(const char *name) {
     CFMutableDictionaryRef matching;
@@ -48,7 +96,6 @@ CFStringRef copy_device_imei() {
     service = IOServiceGetMatchingService(kIOMasterPortDefault, matching);
     
     if(!service) {
-        printf("unable to find baseband service\n");
         return NULL;
     }
     
@@ -294,6 +341,16 @@ CFStringRef copy_wifi_mac_address() {
     return wifimac;
 }
 
+int useNewUDID(CFStringRef hw)
+{
+    return CFEqual(hw, CFSTR("K93AP")) ||
+            CFEqual(hw, CFSTR("K94AP")) ||
+            CFEqual(hw, CFSTR("K95AP")) ||
+            CFEqual(hw, CFSTR("N92AP")) ||
+            CFEqual(hw, CFSTR("N94AP"));
+}
+
+//http://iphonedevwiki.net/index.php/Lockdownd
 void get_device_infos(CFMutableDictionaryRef out) {
     CC_SHA1_CTX sha1ctx;
     uint8_t udid[20];
@@ -322,7 +379,20 @@ void get_device_infos(CFMutableDictionaryRef out) {
         CFDictionaryAddValue(out, CFSTR("serialNumber"), serial);
         CFRelease(serial);
     }
-    if (imei != NULL)
+    
+    uint64_t _ecid = 0;
+    CFNumberRef ecid = copyNumberFromChosen(CFSTR("unique-chip-id"));
+    if (ecid != NULL)
+    {
+        CFDictionaryAddValue(out, CFSTR("ECID"), ecid);
+    }
+    
+    if (ecid != NULL && useNewUDID(hw))
+    {
+        CFNumberGetValue(ecid, kCFNumberSInt64Type, &_ecid);
+        CFStringAppendFormat(udidInput, NULL, CFSTR("%llu"), _ecid);
+    }
+    else if (imei != NULL)
     {
         CFStringAppend(udidInput, imei);
         CFDictionaryAddValue(out, CFSTR("imei"), imei);

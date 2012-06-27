@@ -74,6 +74,8 @@ int write_file(const char* filename, uint8_t* data, size_t len);
 
 void addHexaString(CFMutableDictionaryRef out, CFStringRef key, uint8_t* buffer, size_t len);
 void saveResults(CFStringRef filename, CFMutableDictionaryRef out);
+void writePlistToStdout(CFDictionaryRef out);
 
 int mountDataPartition(const char* mountpoint);
 
+int create_listening_socket(int port);

@@ -6,32 +6,9 @@
 #include <unistd.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include "plist_server.h"
+#include "util.h"
 
 #define TCP_PORT            1999
-
-int create_listening_socket(int port)
-{
-    struct sockaddr_in listen_addr;
-    int s, one = 1;
-    
-    memset(&listen_addr, 0, sizeof(struct sockaddr));
-    listen_addr.sin_family = AF_INET;
-    listen_addr.sin_port = htons(port);
-    listen_addr.sin_addr.s_addr = INADDR_ANY;
-    
-    s = socket(AF_INET, SOCK_STREAM, 0);
-    
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
-    
-    if (bind(s, (struct sockaddr *)&listen_addr, sizeof(struct sockaddr)) < 0)
-    {
-        perror("bind");
-        return -1;
-    }
-    listen(s, 10);
-
-    return s;
-}
 
 int send_progress_message(int socket, int progress, int total)
 {

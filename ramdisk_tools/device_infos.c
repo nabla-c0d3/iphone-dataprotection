@@ -30,14 +30,15 @@ int main(int argc, char* argv[])
         return 0;
     }
    
-    CFStringRef plistFileName = CFStringCreateWithFormat(kCFAllocatorDefault, NULL, CFSTR("%@.plist"), CFDictionaryGetValue(out, CFSTR("dataVolumeUUID")));
+    writePlistToStdout(out);
+    /*CFStringRef plistFileName = CFStringCreateWithFormat(kCFAllocatorDefault, NULL, CFSTR("%@.plist"), CFDictionaryGetValue(out, CFSTR("dataVolumeUUID")));
     
     CFStringRef printString = CFStringCreateWithFormat(kCFAllocatorDefault, NULL, CFSTR("Writing results to %@\n"), plistFileName);
     CFShow(printString);
     CFRelease(printString);
     
     saveResults(plistFileName, out);
+    CFRelease(plistFileName);*/
     CFRelease(out);
-    CFRelease(plistFileName);
     return 0;
 }

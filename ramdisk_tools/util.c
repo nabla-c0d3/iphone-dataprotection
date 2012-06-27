@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mount.h>
@@ -35,6 +37,14 @@ int write_file(const char* filename, uint8_t* data, size_t len)
     return 0;
 }
 
+void writePlistToStdout(CFDictionaryRef out)
+{
+    CFDataRef d = CFPropertyListCreateData(kCFAllocatorDefault, out, kCFPropertyListXMLFormat_v1_0, 0, NULL);
+    if (d == NULL)
+        return;
+    write(1, CFDataGetBytePtr(d), CFDataGetLength(d));
+}
+
 int mountDataPartition(const char* mountpoint)
 {
     char* diskname = "/dev/disk0s2s1";
@@ -46,7 +56,11 @@ int mountDataPartition(const char* mountpoint)
     
     diskname = "/dev/disk0s1s2";
     err = mount("hfs","/mnt2", MNT_RDONLY | MNT_NOATIME | MNT_NODEV | MNT_LOCAL, &diskname);
-    
+    if (!err)
+        return 0;
+    diskname = "/dev/disk0s2";
+    err = mount("hfs","/mnt2", MNT_RDONLY | MNT_NOATIME | MNT_NODEV | MNT_LOCAL, &diskname);
+
     return err;
 }
 
@@ -163,4 +177,28 @@ void saveResults(CFStringRef filename, CFMutableDictionaryRef out)
     
     CFRelease(stream);
     CFRelease(fileURL);
+}
+
+int create_listening_socket(int port)
+{
+    struct sockaddr_in listen_addr;
+    int s, one = 1;
+    
+    memset(&listen_addr, 0, sizeof(struct sockaddr));
+    listen_addr.sin_family = AF_INET;
+    listen_addr.sin_port = htons(port);
+    listen_addr.sin_addr.s_addr = INADDR_ANY;
+    
+    s = socket(AF_INET, SOCK_STREAM, 0);
+    
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    
+    if (bind(s, (struct sockaddr *)&listen_addr, sizeof(struct sockaddr)) < 0)
+    {
+        perror("bind");
+        return -1;
+    }
+    listen(s, 10);
+
+    return s;
 }

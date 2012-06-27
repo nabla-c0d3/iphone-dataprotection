@@ -31,4 +31,6 @@ int doAES(void* inbuf, void *outbuf, uint32_t size, uint32_t keyMask, void* key,
 int AES_UID_Encrypt(void* input, void* output, size_t len);
 
 uint8_t* IOAES_key835();
+uint8_t* IOAES_key89A();
 uint8_t* IOAES_key89B();
+

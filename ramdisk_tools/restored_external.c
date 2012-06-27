@@ -3,12 +3,14 @@ https://github.com/comex/bloggy/wiki/Redsn0w%2Busbmux
 **/
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <net/if.h>
 #include <assert.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -19,6 +21,7 @@ https://github.com/comex/bloggy/wiki/Redsn0w%2Busbmux
 #include "plist_server.h"
 #include "remote_functions.h"
 #include "device_info.h"
+#include "registry.h"
 
 #define kIOSomethingPluginID CFUUIDGetConstantUUIDWithBytes(NULL, \
     0x9E, 0x72, 0x21, 0x7E, 0x8A, 0x60, 0x11, 0xDB, \
@@ -27,9 +30,9 @@ https://github.com/comex/bloggy/wiki/Redsn0w%2Busbmux
     0xEA, 0x33, 0xBA, 0x4F, 0x8A, 0x60, 0x11, 0xDB, \
     0x84, 0xDB, 0x00, 0x0D, 0x93, 0x6D, 0x06, 0xD2)
 
-void init_usb() {
+void init_usb(CFStringRef serialString) {
     IOUSBDeviceDescriptionRef desc = IOUSBDeviceDescriptionCreateFromDefaults(kCFAllocatorDefault);
-    IOUSBDeviceDescriptionSetSerialString(desc, CFSTR("ramdisk tool " __DATE__ " " __TIME__ ));
+    IOUSBDeviceDescriptionSetSerialString(desc, serialString == NULL ? CFSTR("ramdisk - udid fail?") : serialString);
     
     CFArrayRef usb_interfaces = IOUSBDeviceDescriptionCopyInterfaces(desc);
     int i;
@@ -131,13 +134,29 @@ void init_tcp() {
 
 }
 
+CFDictionaryRef reboot__(int socket, CFDictionaryRef dict)
+{
+    reboot(0);
+    return NULL;
+}
+
+
 char* execve_env[]= {NULL};
 char* execve_params[]={"/sbin/sshd", NULL};
+char* ioflash[]={"/var/root/ioflashstoragekit", NULL};
+
+size_t bootargs_len = 255;
+char bootargs[256]={0};
 
 int main(int argc, char* argv[])
 {
+    int i;
+    int nandReadOnly=0;
+    struct stat st;
+    
     printf("Starting ramdisk tool\n");
     printf("Compiled " __DATE__ " " __TIME__ "\n");
+    printf("Revision " HGVERSION "\n");
     
     CFMutableDictionaryRef matching;
     io_service_t service = 0;
@@ -155,27 +174,47 @@ int main(int argc, char* argv[])
     IORegistryEntrySetCFProperties(service, n);
     IOObjectRelease(service);
     
-    init_tcp();
-    init_usb();
-    printf("USB init done\n");
+    CFMutableDictionaryRef deviceInfos = CFDictionaryCreateMutable(kCFAllocatorDefault,
+                                                            0,
+                                                            &kCFTypeDictionaryKeyCallBacks,
+                                                            &kCFTypeDictionaryValueCallBacks);	
     
-    int i;
-    struct stat st;
-    printf("Waiting for data partition\n");
-    for(i=0; i < 10; i++)
+    get_device_infos(deviceInfos);
+    init_tcp();
+
+    sysctlbyname("kern.bootargs", bootargs, &bootargs_len, NULL, 0);
+    
+    if (strstr(bootargs, "nand-readonly") || strstr(bootargs, "nand-disable"))
     {
-        if(!stat("/dev/disk0s2s1", &st))
-        {
-            system("/sbin/fsck_hfs  /dev/disk0s2s1");
-            break;
-        }
-        if(!stat("/dev/disk0s1s2", &st))
-        {
-            system("/sbin/fsck_hfs  /dev/disk0s1s2");
-            break;
-        }
-        sleep(5);
+        printf("NAND read only mode, data partition wont be mounted\n");
+        nandReadOnly = 1;
     }
+    else
+    {
+        printf("Waiting for data partition\n");
+        for(i=0; i < 10; i++)
+        {
+            if(!stat("/dev/disk0s2s1", &st))
+            {
+                system("/sbin/fsck_hfs  /dev/disk0s2s1");
+                break;
+            }
+            if(!stat("/dev/disk0s1s2", &st))
+            {
+                system("/sbin/fsck_hfs  /dev/disk0s1s2");
+                break;
+            }
+            if(!stat("/dev/disk0s2", &st))
+            {
+                system("/sbin/fsck_hfs  /dev/disk0s2");
+                break;
+            }
+            sleep(5);
+        }
+    }
+    init_usb(CFDictionaryGetValue(deviceInfos, CFSTR("udid")));
+    printf("USB init done\n");
+
     system("mount /"); //make ramdisk writable
    
     chmod("/var/root/.ssh/authorized_keys", 0600); 
@@ -190,13 +229,24 @@ int main(int argc, char* argv[])
     printf("##     ## ##  ##  \n");
     printf("##     ## ##   ## \n"); 
     printf(" #######  ##    ##\n");
-
+    printf("iphone-dataprotection ramdisk " HGVERSION " "  __DATE__ " " __TIME__ );
+    
     if(!fork())
     {
         printf("Running %s\n", execve_params[0]);
         execve(execve_params[0], execve_params, execve_env);
         return 0;
     }
+    
+    /*if (nandReadOnly)
+    {*/
+        if(!fork())
+        {
+            printf("Running %s\n", ioflash[0]);
+            execve(ioflash[0], ioflash, execve_env);
+            return 0;
+        }
+    /*}*/
     
     CFMutableDictionaryRef handlers = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, NULL);
     CFDictionaryAddValue(handlers, CFSTR("DeviceInfo"), device_info);
@@ -205,6 +255,8 @@ int main(int argc, char* argv[])
     CFDictionaryAddValue(handlers, CFSTR("KeyBagGetPasscodeKey"), keybag_get_passcode_key);
     CFDictionaryAddValue(handlers, CFSTR("GetEscrowRecord"), get_escrow_record);
     CFDictionaryAddValue(handlers, CFSTR("DownloadFile"), download_file);
+    CFDictionaryAddValue(handlers, CFSTR("AES"), remote_aes);
+    CFDictionaryAddValue(handlers, CFSTR("Reboot"), reboot__);
 
     serve_plist_rpc(1999, handlers);
     return 0;

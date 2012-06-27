@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <CoreFoundation/CoreFoundation.h>
+#include <CommonCrypto/CommonCryptor.h> 
 #include "IOKit.h"
 #include "IOAESAccelerator.h"
 #include "AppleEffaceableStorage.h"
@@ -47,35 +48,68 @@ CFDictionaryRef AppleKeyStore_loadKeyBag(const char* folder, const char* filenam
     if (data == NULL)
         return NULL;
     
-    uint8_t* mkbpayload = malloc(CFDataGetLength(data));
+    uint8_t* mkbpayload = valloc(CFDataGetLength(data));
     CFDataGetBytes(data, CFRangeMake(0,CFDataGetLength(data)), mkbpayload);
     int length = CFDataGetLength(data);
     
     if (length < 16)
+    {
+        free(mkbpayload);
         return NULL;
+    }
     
     if (AppleEffaceableStorage__getLocker(LOCKER_BAG1, (uint8_t*) &bag1_locker, sizeof(struct BAG1Locker)))
+    {
+        free(mkbpayload);
         return NULL;
+    }
     
     if (bag1_locker.magic != 'BAG1')
-        printf("bad BAG1 magic\n");
-        
-    doAES(mkbpayload, mkbpayload, length, kIOAESAcceleratorCustomMask, bag1_locker.key, bag1_locker.iv, kIOAESAcceleratorDecrypt, 256);
-    
-    int pad = mkbpayload[length-1];
-    if (pad > 16)
+        fprintf(stderr, "AppleKeyStore_loadKeyBag: bad BAG1 magic\n");
+
+    size_t decryptedSize = 0; 
+
+    CCCryptorStatus cryptStatus = CCCrypt(kCCDecrypt, 
+                                          kCCAlgorithmAES128, 
+                                          kCCOptionPKCS7Padding, 
+                                          bag1_locker.key, 
+                                          kCCKeySizeAES256, 
+                                          bag1_locker.iv,
+                                          mkbpayload,
+                                          length,
+                                          mkbpayload,
+                                          length,
+                                          &decryptedSize); 
+
+    if (cryptStatus != kCCSuccess)
+    { 
+        fprintf(stderr, "AppleKeyStore_loadKeyBag CCCrypt kCCDecrypt with BAG1 key failed, return code=%x\n", cryptStatus);
+        free(mkbpayload);
         return NULL;
-    length = length-pad;
+    }
         
-    CFDataRef data2 = CFDataCreateWithBytesNoCopy(kCFAllocatorDefault,
-                                                  mkbpayload,
-                                                  length,
-                                                  kCFAllocatorNull);
+    CFDataRef data2 = CFDataCreate(kCFAllocatorDefault,
+                                  mkbpayload,
+                                  decryptedSize
+                                  );
     
     if (data2 == NULL)
+    {
+        free(mkbpayload);
         return NULL;
-    
-    return CFPropertyListCreateWithData(kCFAllocatorDefault, data2, kCFPropertyListImmutable, NULL, NULL);
+    }
+
+    CFErrorRef e=NULL;
+    CFPropertyListRef plist2 = CFPropertyListCreateWithData(kCFAllocatorDefault, data2, kCFPropertyListImmutable, NULL, &e);
+    if (plist2 == NULL)
+    {
+        fprintf(stderr, "AppleKeyStore_loadKeyBag failed to create plist, AES fail decryptedSize=%x?\n", decryptedSize);
+        
+        CFShow(e);
+    }
+    free(mkbpayload);
+    CFRelease(data2);
+    return plist2;
 }
 
 int AppleKeyStoreKeyBagInit()
