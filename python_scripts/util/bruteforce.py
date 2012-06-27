@@ -35,9 +35,9 @@ def loadKeybagFromVolume(volume, device_infos):
 
 def bruteforcePasscode(device_infos, data_volume):
     if device_infos.has_key("passcode"):
-        print "Passcode already found, no bruteforce required    "
-        return True
-    kb = loadKeybagFromVolume(data_volume, device_infos)
+        print "Passcode already found, no bruteforce required"
+        return False
+    kb = data_volume.keybag
     if not kb:
         return False
     
@@ -46,7 +46,7 @@ def bruteforcePasscode(device_infos, data_volume):
         print "Wrong device connected"
         return
     
-    print "If you already know the passcode enter it :"
+    print "Enter passcode or leave blank for bruteforce:"
     z = raw_input()
     bf = rd.getPasscodeKey(kb.KeyBagKeys, z)
     if kb.unlockWithPasscodeKey(bf.get("passcodeKey").decode("hex")):
