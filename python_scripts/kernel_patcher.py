@@ -8,12 +8,14 @@ from optparse import OptionParser
 from Crypto.Cipher import AES
 from util.lzss import decompress_lzss
 
-devices = {"n88ap": "iPhone2,1",
+devices = {"n82ap": "iPhone1,2",
+           "n88ap": "iPhone2,1",
            "n90ap": "iPhone3,1",
            "n92ap": "iPhone3,3",
            "n18ap": "iPod3,1",
            "n81ap": "iPod4,1",
-           "k48ap": "iPad1,1"
+           "k48ap": "iPad1,1",
+           "n72ap": "iPod2,1",
            }
 
 h=lambda x:x.replace(" ","").decode("hex")
@@ -22,9 +24,13 @@ patchs_ios5 = {
     "CSED" : (h("df f8 88 33 1d ee 90 0f a2 6a 1b 68"), h("df f8 88 33 1d ee 90 0f a2 6a 01 23")),
     "AMFI" : (h("D0 47 01 21 40 B1 13 35"), h("00 20 01 21 40 B1 13 35")),
     "_PE_i_can_has_debugger" : (h("38 B1 05 49 09 68 00 29"), h("01 20 70 47 09 68 00 29")),
+    "task_for_pid_0" : (h("00 21 02 91 ba f1 00 0f 01 91 06 d1 02 a8"), h("00 21 02 91 ba f1 00 0f 01 91 06 e0 02 a8")),
     "IOAESAccelerator enable UID" : (h("67 D0 40 F6"), h("00 20 40 F6")),
     #not stritcly required, useful for testing
     "getxattr system": ("com.apple.system.\x00", "com.apple.aaaaaa.\x00"),
+    "IOAES gid": (h("40 46 D4 F8 54 43 A0 47"), h("40 46 D4 F8 43 A0 00 20")),
+    #HAX to fit into the 40 char boot-args (redsn0w 0.9.10)
+    "nand-disable-driver": ("nand-disable-driver\x00", "nand-disable\x00\x00\x00\x00\x00\x00\x00\x00")
 }
 
 patchs_ios4 = {
@@ -36,6 +42,15 @@ patchs_ios4 = {
     "getxattr system": ("com.apple.system.\x00", "com.apple.aaaaaa.\x00"),
 }
 
+patchs_armv6 = {
+    "NAND_epoch" : (h("00 00 5B E1 0E 00 00 0A"), h("00 00 5B E1 0E 00 00 EA")),
+    "CSED" : (h("00 00 00 00 01 00 00 00 80 00 00 00 00 00 00 00"), h("01 00 00 00 01 00 00 00 80 00 00 00 00 00 00 00")),
+    "AMFI" : (h("00 00 00 0A 00 40 A0 E3 04 00 A0 E1 90 80 BD E8"), h("00 00 00 0A 00 40 A0 E3 01 00 A0 E3 90 80 BD E8")),
+    "_PE_i_can_has_debugger" : (h("00 28 0B D0 07 4A 13 68 00 2B 02 D1 03 60 10 68"), h("01 20 70 47 07 4A 13 68 00 2B 02 D1 03 60 10 68")),
+    "IOAESAccelerator enable UID" : (h("5D D0 36 4B 9A 42"), h("00 20 36 4B 9A 42")),
+    "IOAES gid": (h("FA 23 9B 00 9A 42 05 D1"), h("00 20 00 20 9A 42 05 D1")),
+    "nand-disable-driver": ("nand-disable-driver\x00", "nand-disable\x00\x00\x00\x00\x00\x00\x00\x00")
+}
 patchs_ios4_fixnand = {
     "Please reboot => jump to prepare signature": (h("B0 47 DF F8 E8 04 F3 E1"), h("B0 47 DF F8 E8 04 1D E0")),
     "prepare signature => jump to write signature": (h("10 43 18 60 DF F8 AC 04"), h("10 43 18 60 05 E1 00 20")),
@@ -82,6 +97,7 @@ def main(ipswname, options):
     ipsw = zipfile.ZipFile(ipswname)
     manifest = plistlib.readPlistFromString(ipsw.read("BuildManifest.plist"))
     kernelname = manifest["BuildIdentities"][0]["Manifest"]["KernelCache"]["Info"]["Path"]
+    devclass = manifest["BuildIdentities"][0]["Info"]["DeviceClass"]
     kernel = ipsw.read(kernelname)
     keys = IPSWkeys(manifest)
     
@@ -100,7 +116,10 @@ def main(ipswname, options):
     assert kernel.startswith("\xCE\xFA\xED\xFE"), "Decompressed kernelcache does not start with 0xFEEDFACE"
     
     patchs = patchs_ios5
-    if manifest["ProductVersion"].startswith("4."):
+    if devclass in ["n82ap", "n72ap"]:
+        print "Using ARMv6 kernel patches"
+        patchs = patchs_armv6
+    elif manifest["ProductVersion"].startswith("4."):
         print "Using iOS 4 kernel patches"
         patchs = patchs_ios4
     
@@ -127,12 +146,13 @@ def main(ipswname, options):
     
     ramdiskname = manifest["BuildIdentities"][0]["Manifest"]["RestoreRamDisk"]["Info"]["Path"]
     key,iv = keys.getKeyIV("Ramdisk")
+    customramdisk = "myramdisk_%s.dmg" % devclass
     
-    build_cmd = "./build_ramdisk.sh %s %s %s %s" % (ipswname, ramdiskname, key, iv)
-    rs_cmd = "redsn0w -i %s -r myramdisk.dmg -k %s" % (ipswname, outkernel)
+    build_cmd = "./build_ramdisk.sh %s %s %s %s %s" % (ipswname, ramdiskname, key, iv, customramdisk)
+    rs_cmd = "redsn0w -i %s -r %s -k %s" % (ipswname, customramdisk, outkernel)
     rdisk_script="""#!/bin/sh
 
-for VER in 4.2 4.3 5.0
+for VER in 4.2 4.3 5.0 5.1
 do
     if [ -f "/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS$VER.sdk/System/Library/Frameworks/IOKit.framework/IOKit" ];
     then
@@ -149,11 +169,14 @@ SDKVER=$SDKVER make -C ramdisk_tools
 
 %s
 
-echo "You can boot the ramdisk using the following command (fix paths)"
-echo "%s"
+if [ "$?" == "0" ]
+then
+    echo "You can boot the ramdisk using the following command (fix paths)"
+    echo "%s"
+    echo "Append -a \"-v rd=md0 nand-disable-driver=1\" for better forensic soundness"
+fi
 """ % (build_cmd, rs_cmd)
     
-    devclass = manifest["BuildIdentities"][0]["Info"]["DeviceClass"]
     scriptname="make_ramdisk_%s.sh" % devclass
     f=open(scriptname, "wb")
     f.write(rdisk_script)
