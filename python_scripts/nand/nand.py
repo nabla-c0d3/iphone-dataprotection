@@ -10,7 +10,7 @@ from legacyftl import FTL
 from partition_tables import GPT_partitions, parse_lwvm, parse_mbr, parse_gpt, \
     APPLE_ENCRYPTED
 from progressbar import ProgressBar
-from remote import NANDRemote
+from remote import NANDRemote, IOFlashStorageKitClient
 from structs import *
 from util import sizeof_fmt, write_file, load_pickle, save_pickle, hexdump, \
     makedirs
@@ -412,3 +412,13 @@ class NAND(object):
             return load_pickle(self.filename + "." + name)
         except:
             return None
+        
+    def dump(self, p):
+        #hax ioflashstoragekit can only handle 1 connexion
+        if self.filename == "remote":
+            del self.image
+        ioflash = IOFlashStorageKitClient()
+        ioflash.dump_nand(p)
+        #restore proxy
+        if self.filename == "remote":
+            self.image = NANDRemote(self.pageSize, self.metaSize, self.pagesPerBlock, self.bfn)

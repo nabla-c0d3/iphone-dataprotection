@@ -325,11 +325,7 @@ class ExaminerShell(Cmd):
         if len(p)==0:
             print "Usage: nand_dump my_nand.bin"
             return
-        #HAX to close connexion
-        if self.image.filename == "remote":
-            del self.image.image.client
-        ioflash = IOFlashStorageKitClient()
-        ioflash.dump_nand(p)
+        self.image.dump(p)
 
     def do_dd(self, p):
         if len(p)==0:

@@ -173,7 +173,7 @@ if [ "$?" == "0" ]
 then
     echo "You can boot the ramdisk using the following command (fix paths)"
     echo "%s"
-    echo "Append -a \"-v rd=md0 nand-disable-driver=1\" for better forensic soundness"
+    echo "Add -a \\"-v rd=md0 nand-disable=1\\" for nand dump/read only access"
 fi
 """ % (build_cmd, rs_cmd)
     
