@@ -106,6 +106,7 @@ class EMFVolume(HFSVolume):
             raise #Exception("Invalid keyfile")
         
         rootxattr =  self.getXattr(kHFSRootParentID, "com.apple.system.cprotect")
+        self.decrypted = (self.header.finderInfo[3] == FLAG_DECRYPTED)
         self.cp_major_version = None
         self.cp_root = None
         if rootxattr == None:
@@ -149,7 +150,7 @@ class EMFVolume(HFSVolume):
             return
         assert v.recordType == kHFSPlusFileRecord
         cprotect = self.getXattr(v.data.fileID, "com.apple.system.cprotect")
-        if cprotect == None or not self.cp_root:
+        if cprotect == None or not self.cp_root or self.decrypted:
             #print "cprotect attr not found, reading normally"
             return super(EMFVolume, self).readFile(path, returnString=returnString)
         filekey = self.getFileKeyForCprotect(cprotect)

@@ -42,6 +42,17 @@ def bf_system():
         keybags[kbuuid] = {"KeyBagKeys": systembag["KeyBagKeys"]}
         di["KeyBagKeys"] = systembag["KeyBagKeys"]
         di.save()
+        print "Enter passcode or leave blank for bruteforce:"
+        z = raw_input()
+        res = client.getPasscodeKey(systembag["KeyBagKeys"].data, z)
+        if kb.unlockWithPasscodeKey(res.get("passcodeKey").decode("hex")):
+            print "Passcode \"%s\" OK" % z
+            di.update(res)
+            keybags[kbuuid].update(res)
+            di.save()
+            return
+        if z != "":
+            print "Wrong passcode, trying to bruteforce !"
         if checkPasscodeComplexity(client) == 0:
             print "Trying all 4-digits passcodes..."
             bf = client.bruteforceKeyBag(systembag["KeyBagKeys"].data)
