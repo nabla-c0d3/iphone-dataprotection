@@ -1,4 +1,4 @@
-from Crypto.Cipher import AES
+from crypto.aes import AESdecryptCBC
 from hashlib import sha1
 from struct import unpack
 import os
@@ -156,8 +156,7 @@ class MBDB(object):
             if not key:
                 warn("Cannot unwrap key")
                 return
-            c = AES.new(key, AES.MODE_CBC)
-            file_data = c.decrypt(file_data)
+            file_data = AESdecryptCBC(file_data, key)
             padding = file_data[record.size:]
             if len(padding) > AES.block_size or padding != chr(len(padding)) * len(padding):
                 warn("Incorrect padding for file %s" % record.path)

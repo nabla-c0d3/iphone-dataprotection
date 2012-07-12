@@ -1,8 +1,8 @@
-import hashlib
-from Crypto.Cipher import AES
+from crypto.aes import AESencryptCBC, AESdecryptCBC
 from emf import cprotect_xattr, EMFFile
 from structs import *
 from util import write_file, sizeof_fmt
+import hashlib
 
 """
 Implementation of the following paper :
@@ -117,8 +117,8 @@ def carveEMFemptySpace(volume, file_keys, outdir):
     for lba, block in volume.unallocatedBlocks():
         iv = volume.ivForLBA(lba)
         for filekey in file_keys:
-            ciphertext = AES.new(volume.emfkey, AES.MODE_CBC, iv).encrypt(block)
-            clear = AES.new(filekey, AES.MODE_CBC, iv).decrypt(ciphertext)
+            ciphertext = AESencryptCBC(block, volume.emfkey, iv)
+            clear = AESdecryptCBC(ciphertext, filekey, iv)
             if isDecryptedCorrectly(clear):
                 print "Decrypted stuff at lba %x" % lba
                 open(outdir+ "/%x.bin" % lba, "wb").write(clear)

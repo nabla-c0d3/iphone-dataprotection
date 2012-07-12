@@ -1,4 +1,4 @@
-from Crypto.Cipher import AES
+from crypto.aes import AESdecryptCBC, AESencryptCBC
 from hfs.emf import cprotect_xattr, EMFVolume
 from hfs.hfs import HFSVolume, hfs_date, HFSFile
 from hfs.journal import carveBtreeNode, isDecryptedCorrectly
@@ -105,13 +105,13 @@ class NANDCarver(object):
         if not self.encrypted:
             return ciphertext
         if not self.image.isIOS5():
-            return AES.new(filekey, AES.MODE_CBC, self.volume.ivForLBA(lbn)).decrypt(ciphertext)
+            return AESdecryptCBC(ciphertext, filekey, self.volume.ivForLBA(lbn))
         clear = ""
         ivkey = hashlib.sha1(filekey).digest()[:16]
         for i in xrange(len(ciphertext)/0x1000):
             iv =  self.volume.ivForLBA(decrypt_offset, False)
-            iv = AES.new(ivkey).encrypt(iv)
-            clear += AES.new(filekey, AES.MODE_CBC, iv).decrypt(ciphertext[i*0x1000:(i+1)*0x1000])
+            iv = AESencryptCBC(iv, ivkey)
+            clear += AESdecryptCBC(ciphertext[i*0x1000:(i+1)*0x1000], filekey, iv)
             decrypt_offset += 0x1000
         return clear
 
@@ -353,13 +353,13 @@ class NANDCarver(object):
         if not self.encrypted:
             return ciphertext
         if not self.image.isIOS5():
-            return AES.new(filekey, AES.MODE_CBC, self.volume.ivForLBA(lbn)).decrypt(ciphertext)
+            return AESdecryptCBC(ciphertext, filekey, self.volume.ivForLBA(lbn))
         clear = ""
         ivkey = hashlib.sha1(filekey).digest()[:16]
         for i in xrange(len(ciphertext)/0x1000):
             iv =  self.volume.ivForLBA(decrypt_offset, False)
-            iv = AES.new(ivkey).encrypt(iv)
-            clear += AES.new(filekey, AES.MODE_CBC, iv).decrypt(ciphertext[i*0x1000:(i+1)*0x1000])
+            iv = AESencryptCBC(iv, ivkey)
+            clear += AESdecryptCBC(ciphertext[i*0x1000:(i+1)*0x1000], filekey, iv)
             decrypt_offset += 0x1000
         return clear
     

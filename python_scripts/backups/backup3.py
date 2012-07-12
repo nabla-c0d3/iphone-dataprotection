@@ -1,8 +1,12 @@
-import hashlib,struct,glob,sys,os
 from crypto.PBKDF2 import PBKDF2
-from util.bplist import BPlistReader
-from Crypto.Cipher import AES
+from crypto.aes import AESdecryptCBC
 from util import read_file, write_file, makedirs, readPlist
+from util.bplist import BPlistReader
+import hashlib
+import struct
+import glob
+import sys
+import os
 
 """
 decrypt iOS 3 backup blob (metadata and file contents)
@@ -17,9 +21,9 @@ def decrypt_blob(blob, auth_key):
         print "magic != 0x0100"
     iv = blob[4:20]
     
-    blob_key = AES.new(auth_key, AES.MODE_CBC, iv).decrypt(blob[20:68])[:32]
+    blob_key = AESdecryptCBC(blob[20:68], auth_key)[:32]
 
-    return AES.new(blob_key, AES.MODE_CBC, iv).decrypt(blob[68:])
+    return AESdecryptCBC(blob[68:], blob_key, iv)
 
 def decrypt_backup3(backupfolder, outputfolder, passphrase):
     auth_key = None
@@ -34,7 +38,7 @@ def decrypt_backup3(backupfolder, outputfolder, passphrase):
         iv = authdata[8:24]
         key = PBKDF2(passphrase,pkbdf_salt,iterations=2000).read(32)
     
-        data = AES.new(key, AES.MODE_CBC, iv).decrypt(authdata[24:])
+        data = AESdecryptCBC(authdata[24:], key, iv)
         auth_key = data[:32]
     
         if hashlib.sha1(auth_key).digest() != data[32:52]:
@@ -46,7 +50,7 @@ def decrypt_backup3(backupfolder, outputfolder, passphrase):
     for mdinfo_name in glob.glob(backupfolder + "/*.mdinfo"):
 
         mddata_name = mdinfo_name[:-7] + ".mddata"
-        mdinfo = BPlistReader.plistWithFile(mdinfo_name)
+        mdinfo = readPlist(mdinfo_name)
         metadata = mdinfo["Metadata"].data
         if mdinfo["IsEncrypted"]:
             metadata = decrypt_blob(mdinfo["Metadata"], auth_key)

@@ -2,7 +2,7 @@ import os
 import sys
 from util import sizeof_fmt, hexdump
 from progressbar import ProgressBar
-from Crypto.Cipher import AES
+from crypto.aes import AESdecryptCBC, AESencryptCBC
 
 class FileBlockDevice(object):
     def __init__(self, filename, offset=0, write=False):
@@ -125,7 +125,7 @@ class IMG3BlockDevice(object):
         os.lseek(self.fd, self.offset + self.blockSize * blockNum, os.SEEK_SET)
         data = os.read(self.fd, self.blockSize)
         if self.encrypted:
-            data = AES.new(self.key, AES.MODE_CBC, self.getIVforBlock(blockNum)).decrypt(data)
+            data = AESdecryptCBC(data, self.key, self.getIVforBlock(blockNum))
         return data
 
     def _write(self, offset, data):
@@ -135,5 +135,5 @@ class IMG3BlockDevice(object):
 
     def writeBlock(self, lba, data):
         if self.encrypted:
-            data = AES.new(self.key, AES.MODE_CBC, self.getIVforBlock(lba)).encrypt(data)
+            data = AESencryptCBC(data, self.key, self.getIVforBlock(lba))
         return self._write(lba*self.blockSize, data)

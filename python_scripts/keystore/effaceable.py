@@ -1,10 +1,10 @@
 from construct import RepeatUntil
 from construct.core import Struct, Union
 from construct.macros import *
+from crypto.aes import AESdecryptCBC
 from crypto.aeswrap import AESUnwrap
 from zipfile import crc32
 import struct
-from Crypto.Cipher import AES
 
 Dkey = 0x446B6579
 EMF = 0x454D4621
@@ -62,8 +62,8 @@ class EffaceableLockers(object):
 
     def get_EMF(self, k89b):
         if self.lockers.has_key("LwVM"):
-            lwvm = AES.new(k89b, AES.MODE_CBC).decrypt(self.lockers["LwVM"])
+            lwvm = AESdecryptCBC(self.lockers["LwVM"], k89b)
             return lwvm[-32:]
         elif self.lockers.has_key("EMF!"):
-            return AES.new(k89b, AES.MODE_CBC).decrypt(self.lockers["EMF!"][4:])
+            return AESdecryptCBC(self.lockers["EMF!"][4:], k89b)
             

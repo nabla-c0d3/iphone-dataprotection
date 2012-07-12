@@ -1,4 +1,4 @@
-from Crypto.Cipher import AES
+from crypto.aes import AESdecryptCBC
 from firmware.img2 import IMG2
 from firmware.img3 import Img3, extract_img3s
 from firmware.scfg import parse_SCFG
@@ -36,7 +36,7 @@ def ivForPage(page):
 #iOS 3
 def getEMFkeyFromCRPT(data, key89B):
     assert data.startswith("tprc")
-    z = AES.new(key89B, AES.MODE_CBC).decrypt(data[4:0x44])
+    z = AESdecryptCBC(data[4:0x44], key89B)
     assert z.startswith("TPRC"), "wrong key89B"
     #last_byte = struct.unpack("<Q", z[4:4+8])[0]
     emf = z[16:16+32]
@@ -220,7 +220,7 @@ class NAND(object):
         return spare, data
 
     def decryptPage(self, data, key, pageNum):
-        return AES.new(key, AES.MODE_CBC, ivForPage(pageNum)).decrypt(data)
+        return AESdecryptCBC(data, key, ivForPage(pageNum))
     
     def unpackSpecialPage(self, data):
         l = struct.unpack("<L", data[0x34:0x38])[0]

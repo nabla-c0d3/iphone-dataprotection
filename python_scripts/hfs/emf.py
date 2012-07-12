@@ -1,6 +1,6 @@
-from Crypto.Cipher import AES
 from construct import Struct, ULInt16, ULInt32, String
 from construct.macros import ULInt64, Padding, If
+from crypto.aes import AESencryptCBC, AESdecryptCBC
 from hfs import HFSVolume, HFSFile
 from keystore.keybag import Keybag
 from structs import HFSPlusVolumeHeader, kHFSPlusFileRecord, getString, \
@@ -62,15 +62,15 @@ class EMFFile(HFSFile):
 
     def processBlock(self, block, lba):
         iv = self.volume.ivForLBA(lba)
-        ciphertext = AES.new(self.volume.emfkey, AES.MODE_CBC, iv).encrypt(block)
+        ciphertext = AESencryptCBC(block, self.volume.emfkey, iv)
         if not self.ivkey:
-            clear = AES.new(self.filekey, AES.MODE_CBC, iv).decrypt(ciphertext)
+            clear = AESdecryptCBC(ciphertext, self.filekey, iv)
         else:
             clear = ""
             for i in xrange(len(block)/0x1000):
                 iv = self.volume.ivForLBA(self.decrypt_offset, False)
-                iv = AES.new(self.ivkey).encrypt(iv)
-                clear += AES.new(self.filekey, AES.MODE_CBC, iv).decrypt(ciphertext[i*0x1000:(i+1)*0x1000])
+                iv = AESencryptCBC(iv, self.ivkey)
+                clear += AESdecryptCBC(ciphertext[i*0x1000:(i+1)*0x1000], self.filekey,iv)
                 self.decrypt_offset += 0x1000
         return clear
     

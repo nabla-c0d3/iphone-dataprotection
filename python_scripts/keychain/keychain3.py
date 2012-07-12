@@ -1,7 +1,6 @@
 from keychain import Keychain
-from crypto.aes import AESdecryptCBC
+from crypto.aes import AESdecryptCBC, AESencryptCBC
 import hashlib
-from Crypto.Cipher import AES
 
 class Keychain3(Keychain):
     def __init__(self, filename, key835=None):
@@ -37,8 +36,8 @@ class Keychain3(Keychain):
                 rowid = row["rowid"]
                 data = str(row["data"])
                 iv = data[:16]
-                data = AES.new(self.key835, AES.MODE_CBC, iv).decrypt(data[16:])
-                data = AES.new(newkey, AES.MODE_CBC, iv).encrypt(data)
+                data = AESdecryptCBC(data[16:], self.key835, iv)
+                data = AESencryptCBC(data, newkey, iv)
                 data = iv + data
                 data = buffer(data)
                 self.conn.execute("UPDATE %s SET data=? WHERE rowid=?" % t, (data, rowid))
