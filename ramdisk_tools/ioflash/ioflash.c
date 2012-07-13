@@ -328,8 +328,8 @@ CFMutableDictionaryRef FSDGetInfo(int printInfo)
     FSDGetPropertyForKey(obj, CFSTR("bbt-format"), NULL, 0, dict);
     //FSDGetPropertyForKey(obj, CFSTR("channels"), NULL, 0, dict);
     FSDGetPropertyForKey(obj, CFSTR("vendor-type"), NULL, 0, dict);
-    FSDGetPropertyForKey(obj, CFSTR("ppn-device"), NULL, 0, dict);
-    gPPNdevice = CFDictionaryContainsKey(dict, CFSTR("ppn-device"));
+    FSDGetPropertyForKey(obj, CFSTR("ppn-device"), &gPPNdevice, sizeof(gPPNdevice), dict);
+
 
     FSDGetPropertyForKey(obj, CFSTR("valid-meta-per-logical-page"), &validmetaPerLogicalPage, sizeof(gBytesPerSpare), dict);
     FSDGetPropertyForKey(obj, CFSTR("meta-per-logical-page"), &metaPerLogicalPage, sizeof(gBytesPerSpare), dict);
