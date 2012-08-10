@@ -353,7 +353,7 @@ class NANDCarver(object):
         if not self.encrypted:
             return ciphertext
         if not self.image.isIOS5():
-            return AESdecryptCBC(ciphertext, filekey, self.volume.ivForLBA(lbn))
+            return AESdecryptCBC(ciphertext, filekey, self.volume.ivForLBA(lbn, add=False))
         clear = ""
         ivkey = hashlib.sha1(filekey).digest()[:16]
         for i in xrange(len(ciphertext)/0x1000):
