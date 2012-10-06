@@ -44,7 +44,7 @@ class NANDCarver(object):
                     continue
                 
                 if self.fastMode:
-                    for vpn in self.ftlhax.get(self.first_lba+i):
+                    for vpn in self.ftlhax.get(self.first_lba+i, []):
                         usn = 0
                         s,d = self.nand.ftl.YAFTL_readPage(vpn, self.emfkey, self.first_lba+i)
                         callback(d, usn, filter_)
@@ -70,7 +70,7 @@ class NANDCarver(object):
             if self.files.has_key(h):
                 continue
             if not self.fileIds.has_key(v.data.fileID):
-                print "Found deleted file record", v.data.fileID, name, "created", hfs_date(v.data.createDate)
+                print "Found deleted file record", v.data.fileID, name.encode("utf-8"), "created", hfs_date(v.data.createDate)
                 self.files[h] = (name,v, usn)               
     
     def _attributesFileCallback(self, data, usn, filter_):
@@ -146,7 +146,7 @@ class NANDCarver(object):
                 decrypt_offset += self.pageSize
 
         print "Recovered %d:%s %d missing pages, size %s, created %s, contentModDate %s" % \
-            (filerecord.fileID, filename, missing_pages, sizeof_fmt(logicalSize), hfs_date(filerecord.createDate), hfs_date(filerecord.contentModDate))
+            (filerecord.fileID, filename.encode("utf-8"), missing_pages, sizeof_fmt(logicalSize), hfs_date(filerecord.createDate), hfs_date(filerecord.contentModDate))
         filename =  "%d_%d_%s" % (filerecord.fileID, usn, filename)
         if missing_pages == 0:
             filename = "OK_" + filename
@@ -217,9 +217,9 @@ class NANDCarver(object):
         print "%d files, %d keys" % (len(self.files), len(self.keys))
         for name, vv, usn in self.files.values():
             if not self.keys.has_key(vv.data.fileID):
-                print "No file key for %s" % name
+                print "No file key for %s" % name.encode("utf-8")
             keys = set(self.keys.get(vv.data.fileID, [self.emfkey]))
-            print "%s" % (name)
+            print "%s" % (name.encode("utf-8"))
             if self.readFileHax(name, vv.data, keys):
                 total += 1
 
@@ -339,7 +339,7 @@ class NANDCarver(object):
             decrypt_offset += self.pageSize
 
         print "Recovered %d:%s %d missing pages, size %s, created %s, contentModDate %s" % \
-            (filerecord.fileID, filename, missing_pages, sizeof_fmt(logicalSize), hfs_date(filerecord.createDate), hfs_date(filerecord.contentModDate))
+            (filerecord.fileID, filename.encode("utf-8"), missing_pages, sizeof_fmt(logicalSize), hfs_date(filerecord.createDate), hfs_date(filerecord.contentModDate))
         filename =  "%d_%d_%s" % (filerecord.fileID, first_usn, filename)
         if missing_pages == 0:
             filename = "OK_" + filename

@@ -123,6 +123,7 @@ class EMFVolume(HFSVolume):
         iv = ""
         if add:
             lba = lba + self.lbaoffset
+        lba &= 0xffffffff
         for _ in xrange(4):
             if (lba & 1):
                 lba = 0x80000061 ^ (lba >> 1);
