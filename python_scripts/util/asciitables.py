@@ -3,7 +3,7 @@ def print_table(title, headers, rows):
     widths = []
     
     for i in xrange(len(headers)):
-        z = map(len, [row[i] for row in rows])
+        z = map(len, [str(row[i]) for row in rows])
         z.append(len(headers[i]))
         widths.append(max(z))
     
@@ -20,7 +20,7 @@ def print_table(title, headers, rows):
     for row in rows:
         line = "|"
         for i in xrange(len(row)):
-            line += row[i].ljust(widths[i]) + "|"
+            line += str(row[i]).ljust(widths[i]) + "|"
         print line
     
     if len(rows) == 0:
