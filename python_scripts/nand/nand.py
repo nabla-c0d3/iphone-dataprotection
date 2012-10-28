@@ -48,7 +48,7 @@ class NAND(object):
     def __init__(self, filename, device_infos, ppn=False):
         self.device_infos = device_infos
         self.partition_table = None
-        self.lockers = None
+        self.lockers = {}
         self.iosVersion = 0
         self.hasMBR = False
         self.metadata_whitening = False
@@ -95,7 +95,8 @@ class NAND(object):
             print "NAND signature 0x%x flags 0x%x withening=%d, epoch=%s" % (nSig, flags, self.metadata_whitening, nandsig[0])
                
         if not self.nandonly:
-            self.lockers = EffaceableLockers(self.device_infos.lockers.data)
+            if self.device_infos.has_key("lockers"):
+                self.lockers = EffaceableLockers(self.device_infos.lockers.data)
         else:
             unit = self.findLockersUnit()
             if unit:
