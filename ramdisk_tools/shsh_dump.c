@@ -110,7 +110,7 @@ int main(int argc, char* argv[])
         return -1;
     }
     
-    uint32_t block, page, off;
+    uint32_t block, page, off=0;
     
     for(block=8; block < 16; block++)
     {
