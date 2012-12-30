@@ -152,7 +152,7 @@ def main(ipswname, options):
     rs_cmd = "redsn0w -i %s -r %s -k %s" % (ipswname, customramdisk, outkernel)
     rdisk_script="""#!/bin/sh
 
-for VER in 4.2 4.3 5.0 5.1
+for VER in 4.2 4.3 5.0 5.1 6.0
 do
     if [ -f "/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS$VER.sdk/System/Library/Frameworks/IOKit.framework/IOKit" ];
     then

@@ -4,6 +4,7 @@ https://github.com/comex/bloggy/wiki/Redsn0w%2Busbmux
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <spawn.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/sockio.h>
@@ -229,22 +230,27 @@ int main(int argc, char* argv[])
     printf("##     ## ##  ##  \n");
     printf("##     ## ##   ## \n"); 
     printf(" #######  ##    ##\n");
-    printf("iphone-dataprotection ramdisk " HGVERSION " "  __DATE__ " " __TIME__ );
+    printf("iphone-dataprotection ramdisk\n");
+    printf("revision: " HGVERSION " "  __DATE__ " " __TIME__ "\n");
     
-    if(!fork())
+    if(!stat(execve_params[0], &st))
     {
         printf("Running %s\n", execve_params[0]);
-        execve(execve_params[0], execve_params, execve_env);
-        return 0;
+        if((i = posix_spawn(NULL, execve_params[0], NULL, NULL, execve_params, execve_env)))
+            printf("posix_spawn(%s) returned %d\n", execve_params[0], i);
+    }
+    else
+    {
+        printf("%s is missing\n", execve_params[0]);
     }
     
     /*if (nandReadOnly)
     {*/
-        if(!fork())
+        if(!stat(ioflash[0], &st))
         {
             printf("Running %s\n", ioflash[0]);
-            execve(ioflash[0], ioflash, execve_env);
-            return 0;
+            if((i = posix_spawn(NULL, ioflash[0], NULL, NULL, ioflash, execve_env)))
+                printf("posix_spawn(%s) returned %d\n", execve_params[0], i);
         }
     /*}*/
     
