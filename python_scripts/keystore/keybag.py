@@ -17,6 +17,10 @@ BACKUP_KEYBAG = 1
 ESCROW_KEYBAG = 2
 OTA_KEYBAG = 3
 
+#ORed flags in TYPE since iOS 5
+FLAG_UIDPLUS = 0x40000000   # UIDPlus hardware key (>= iPad 3)
+FLAG_UNKNOWN = 0x80000000
+
 WRAP_DEVICE = 1
 WRAP_PASSCODE = 2
 
@@ -132,7 +136,7 @@ class Keybag(object):
             if len(data) == 4:
                 data = struct.unpack(">L", data)[0]
             if tag == "TYPE":
-                self.type = data
+                self.type = data & 0x3FFFFFFF #ignore the flags
                 if self.type > 3:
                     print "FAIL: keybag type > 3 : %d" % self.type
             elif tag == "UUID" and self.uuid is None:
