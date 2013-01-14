@@ -117,7 +117,8 @@ class NANDCarver(object):
 
     def writeUndeletedFile(self, filename, data):
         knownExtensions = (".m4a", ".plist",".sqlite",".sqlitedb", ".jpeg", ".jpg", ".png", ".db",".json",".xml",".sql")
-        filename = filename.replace("/","_").replace(",","_")
+        #windows invalid chars  \/:*?"<>|
+        filename = str(filename.encode("utf-8")).translate(None, "\\/:*?\"<>|,")
         folder = self.outputdir
         if self.outputdir == "./":
             folder = folder + "/undelete"
