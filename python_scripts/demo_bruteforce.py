@@ -50,6 +50,9 @@ def bf_system():
             di.update(res)
             keybags[kbuuid].update(res)
             di.save()
+            keychain_blob = client.downloadFile("/mnt2/Keychains/keychain-2.db")
+            write_file("keychain-2.db", keychain_blob)
+            print "Downloaded keychain database, use keychain_tool.py to decrypt secrets"
             return
         if z != "":
             print "Wrong passcode, trying to bruteforce !"
