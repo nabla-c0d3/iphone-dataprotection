@@ -69,7 +69,7 @@ int getHFSInfos(struct HFSInfos *infos)
 {
     char buf[8192] = {0};
     struct HFSPlusVolumeHeader* header;
-    unsigned int i,j;
+    unsigned int i;
     
     int fd = open("/dev/rdisk0s2", O_RDONLY);
     if (fd < 0 )
@@ -119,19 +119,9 @@ int getHFSInfos(struct HFSInfos *infos)
                     break;
                 }
             }
-            //XXX: ugly hack, but openiboot formula is weird
-            uint64_t knownSizes[] = {8, 16, 32, 64, 128};
-            uint32_t deviceSize = 0;
-            for (j=0; j < 5; j++)
-            {
-                if (lwvm->mediaSize < (knownSizes[j] * 1024*1024*1024))
-                {
-                    deviceSize = knownSizes[j];
-                    break;
-                }
-            }
-            //fprintf(stderr, "getHFSInfos : LwVM HAX, device is %d Gb, right ?\n", deviceSize);
-            infos->dataVolumeOffset = (i * deviceSize*1024*1024) / blockSize;
+            uint32_t LwVM_rangeShiftValue  = 32 - __builtin_clz((lwvm->mediaSize - 1) >> 10);
+
+            infos->dataVolumeOffset = (i << LwVM_rangeShiftValue) / blockSize;
         }
         else
         {

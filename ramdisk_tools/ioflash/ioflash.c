@@ -465,6 +465,7 @@ int dump_nand_to_socket(int fd)
                     otherPages++;
                 }
             }
+            out->ret2 = 0;
         
             if(write(fd, pageBuffer, gDumpPageSize) != gDumpPageSize)
             {
