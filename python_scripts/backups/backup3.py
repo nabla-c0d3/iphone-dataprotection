@@ -53,7 +53,7 @@ def decrypt_backup3(backupfolder, outputfolder, passphrase):
         mdinfo = readPlist(mdinfo_name)
         metadata = mdinfo["Metadata"].data
         if mdinfo["IsEncrypted"]:
-            metadata = decrypt_blob(mdinfo["Metadata"], auth_key)
+            metadata = decrypt_blob(metadata, auth_key)
         metadata = BPlistReader.plistWithString(metadata)
             
         print metadata["Path"]        

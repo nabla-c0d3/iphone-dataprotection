@@ -116,7 +116,7 @@ class MBDB(object):
             # makedirs throw an exception, my code is ugly =)
             if record.is_directory():
                 try:
-                    os.makedirs(output_path + '/' + record.path)
+                    os.makedirs(os.path.join(output_path, record.domain, record.path))
                 except:
                     pass
 
@@ -135,9 +135,10 @@ class MBDB(object):
         
         file_data = self.read_file(filename, record)
         # write output file
+        path = os.path.join(output_path, record.domain, out_file)
         if file_data:
-            print("Writing %s" % out_file)
-            f = file(output_path + '/' + out_file, 'wb')
+            print("Writing %s" % path)
+            f = file(path, 'wb')
             f.write(file_data)
             f.close()
 
