@@ -21,9 +21,9 @@ def decrypt_blob(blob, auth_key):
         print "magic != 0x0100"
     iv = blob[4:20]
     
-    blob_key = AESdecryptCBC(blob[20:68], auth_key)[:32]
+    blob_key = AESdecryptCBC(blob[20:68], auth_key, iv)[:32]
 
-    return AESdecryptCBC(blob[68:], blob_key, iv)
+    return AESdecryptCBC(blob[68:], blob_key, iv, padding=True)
 
 def decrypt_backup3(backupfolder, outputfolder, passphrase):
     auth_key = None
@@ -56,7 +56,7 @@ def decrypt_backup3(backupfolder, outputfolder, passphrase):
             metadata = decrypt_blob(metadata, auth_key)
         metadata = BPlistReader.plistWithString(metadata)
             
-        print metadata["Path"]        
+        print metadata["Path"]
         
         filedata = read_file(mddata_name)
         if mdinfo["IsEncrypted"]:
