@@ -258,39 +258,50 @@ void check_special_pages()
 
     uint32_t i,x=1;
     uint32_t ok = 0;
+    uint32_t bank, block, page;
     uint8_t* pageBuffer = (uint8_t*) valloc(gDumpPageSize);
 
+    printf("Searching for correct banksPerCEphysical value ...\n");
+    
     while(!ok && x < 10)
     {
         set_physical_banks(x);
-        uint32_t bank = banksPerCEphysical - 1;
-        uint32_t page = (bank_address_space * bank +  (blocks_per_bank-1)) * gPagesPerBlock;
+        bank = banksPerCEphysical - 1;
+        
+        for(block = blocks_per_bank-1; !ok && block > blocks_per_bank-10 ; block--)
+        {
+        page = (bank_address_space * bank +  block) * gPagesPerBlock;
 
         struct kIOFlashControllerOut *out = (&pageBuffer[gBytesPerPage + metaPerLogicalPage]);
      
         for(i=0; i < gPagesPerBlock; i++)
         {
-            int r = FSDReadPageWithOptions(0, page + i, pageBuffer, &pageBuffer[gBytesPerPage], metaPerLogicalPage, 0, out);
+            if(FSDReadPageWithOptions(0, page + i, pageBuffer, &pageBuffer[gBytesPerPage], metaPerLogicalPage, 0, out))
+                continue;
+            
+            if(pageBuffer[gBytesPerPage] != 0xA5)
+                continue;
             if(!memcmp(pageBuffer, "DEVICEINFOBBT", 13))
             {
-                printf("Found DEVICEINFOBBT at page %d, banksPerCEphyiscal=%d\n", page+i, banksPerCEphysical);
+                printf("Found cleartext DEVICEINFOBBT at block %d page %d with banksPerCEphyiscal=%d\n", blocks_per_bank*bank +block, i, banksPerCEphysical);
                 ok = 1;
                 break;
             }
             decrypt_page(pageBuffer, gBytesPerPage, META_KEY, kCCKeySizeAES128, page + i);
             if(!memcmp(pageBuffer, "DEVICEINFOBBT", 13))
             {
-                printf("Found DEVICEINFOBBT at page %d, banksPerCEphyiscal=%d\n", page+i, banksPerCEphysical);
+                printf("Found encrypted DEVICEINFOBBT at block %d page %d with banksPerCEphyiscal=%d\n", blocks_per_bank*bank +block, i, banksPerCEphysical);
                 ok = 1;
                 break;
             }
+        }
         }
         x++;
     }
     if(!ok)
     {
-        fprintf(stderr, "Couldnt guess the number of physical banks, assuming 1\n");
-        set_physical_banks(1);
+        fprintf(stderr, "Couldnt guess the number of physical banks, exiting\n");
+        exit(0);
     }
     free(pageBuffer);
     return;
