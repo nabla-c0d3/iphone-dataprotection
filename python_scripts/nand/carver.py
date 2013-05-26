@@ -316,6 +316,8 @@ class NANDCarver(object):
                     continue
                 idx = lbns.index(lbn)
                 s, ciphertext = self.nand.ftl.YAFTL_readPage(bbtoc[lbn], key=None, lpn=None)
+                if not ciphertext:
+                    continue
                 ciphertext = self.decryptFileBlock2(ciphertext, filekey, lbn, idx*self.pageSize)
                 if idx == 0:
                     if not isDecryptedCorrectly(ciphertext):
