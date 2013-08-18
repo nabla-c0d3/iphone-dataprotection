@@ -160,7 +160,14 @@ class MBDB(object):
             file_data = AESdecryptCBC(file_data, key)
             padding = file_data[record.size:]
             if len(padding) > 16 or padding != chr(len(padding)) * len(padding):
-                warn("Incorrect padding for file %s" % record.path)
+                warn("Incorrect padding for file %s %d %d" % (record.path, len(file_data),record.size))
+                c = file_data[-1]
+                i = ord(c)
+                if i < 17 and file_data.endswith(c*i):
+                  warn("But good padding of %d anyway" % i)
+                  file_data = file_data[:-i]
+
+                return file_data
             file_data = file_data[:record.size]
         return file_data
 
