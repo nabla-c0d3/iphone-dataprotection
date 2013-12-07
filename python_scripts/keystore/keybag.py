@@ -50,6 +50,7 @@ class Keybag(object):
         self.wrap = None
         self.deviceKey = None
         self.unlocked = False
+        self.passcodeComplexity = 0
         self.attrs = {}
         self.classKeys = {}
         self.KeyBagKeys = None #DATASIGN blob
@@ -98,7 +99,12 @@ class Keybag(object):
             return None
         decryptedPlist = BPlistReader.plistWithString(decryptedPlist)
         blob = decryptedPlist["KeyBagKeys"].data
-        return Keybag.createWithDataSignBlob(blob, deviceKey)
+        kb = Keybag.createWithDataSignBlob(blob, deviceKey)
+        if decryptedPlist.has_key("OpaqueStuff"):
+            OpaqueStuff = BPlistReader.plistWithString(decryptedPlist["OpaqueStuff"].data)
+            kb.passcodeComplexity = OpaqueStuff.get("keyboardType")
+        return kb
+
     
     @staticmethod
     def createWithDataSignBlob(blob, deviceKey=None):
@@ -254,4 +260,3 @@ class Keybag(object):
             for ck in self.classKeys.values():
                 d["%d" % ck["CLAS"]] = ck.get("KEY","").encode("hex")
             return d
-        

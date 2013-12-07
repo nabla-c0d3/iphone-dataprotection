@@ -6,15 +6,6 @@ from keychain.managedconfiguration import bruteforce_old_pass
 from util.ramdiskclient import RamdiskToolClient
 from util import write_file
 
-def checkPasscodeComplexity(rdclient):
-    pl = rdclient.downloadFile("/mnt2/mobile/Library/ConfigurationProfiles/PublicInfo/EffectiveUserSettings.plist")
-    if not pl:
-        print "Failed to download UserSettings.plist, assuming simple passcode"
-        return 0
-    pl = plistlib.readPlistFromString(pl)
-    print "passcodeKeyboardComplexity :", pl["restrictedValue"]["passcodeKeyboardComplexity"]
-    return pl["restrictedValue"]["passcodeKeyboardComplexity"]["value"]
-
 def bf_system():
     curdir = os.path.dirname(os.path.abspath(__file__))
     client = RamdiskToolClient()
@@ -57,7 +48,7 @@ def bf_system():
             return
         if z != "":
             print "Wrong passcode, trying to bruteforce !"
-        if checkPasscodeComplexity(client) == 0:
+        if kb.passcodeComplexity == 0:
             print "Trying all 4-digits passcodes..."
             bf = client.bruteforceKeyBag(systembag["KeyBagKeys"].data)
             if bf:

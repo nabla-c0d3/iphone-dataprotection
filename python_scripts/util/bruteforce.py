@@ -46,6 +46,7 @@ def bruteforcePasscode(device_infos, data_volume):
         print "Wrong device connected"
         return
     
+    print "Passcode comlexity (from OpaqueStuff) : %s" % COMPLEXITY.get(kb.passcodeComplexity)
     print "Enter passcode or leave blank for bruteforce:"
     z = raw_input()
     bf = rd.getPasscodeKey(kb.KeyBagKeys, z)
@@ -54,7 +55,7 @@ def bruteforcePasscode(device_infos, data_volume):
     else:
         if z != "":
             print "Wrong passcode, trying to bruteforce !"
-        if checkPasscodeComplexity(data_volume) != 0:
+        if kb.passcodeComplexity != 0:
             print "Complex passcode used, not bruteforcing"
             return False
 
