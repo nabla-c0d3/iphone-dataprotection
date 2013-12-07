@@ -1,4 +1,4 @@
-from crypto.aes import AESdecryptCBC
+from Crypto.Cipher import AES
 from hashlib import sha1
 from struct import unpack
 import os
@@ -132,42 +132,43 @@ class MBDB(object):
             out_file = record.target
         else:
             out_file = record.path
-        
-        file_data = self.read_file(filename, record)
-        # write output file
-        path = os.path.join(output_path, record.domain, out_file)
-        if file_data:
-            print("Writing %s" % path)
-            f = file(path, 'wb')
-            f.write(file_data)
-            f.close()
 
-    def read_file(self, filename, record):
         # read backup file
         try:
-            f = file(self.backup_path + '/' + filename, 'rb')
-            file_data = f.read()
-            f.close()
+            f1 = file(os.path.join(self.backup_path, filename), 'rb')
         except(IOError):
             warn("File %s (%s) has not been found" % (filename, record.path))
             return
+
+        # write output file
+        output_path = os.path.join(output_path, record.domain, out_file)
+        print("Writing %s" % output_path)
+        f2 = file(output_path, 'wb')
+
+        aes = None
 
         if record.encryption_key is not None and self.keybag: # file is encrypted!
             key = self.keybag.unwrapKeyForClass(record.protection_class, record.encryption_key[4:])
             if not key:
                 warn("Cannot unwrap key")
                 return
-            file_data = AESdecryptCBC(file_data, key)
-            padding = file_data[record.size:]
-            if len(padding) > 16 or padding != chr(len(padding)) * len(padding):
-                warn("Incorrect padding for file %s %d %d" % (record.path, len(file_data),record.size))
-                c = file_data[-1]
-                i = ord(c)
-                if i < 17 and file_data.endswith(c*i):
-                  warn("But good padding of %d anyway" % i)
-                  file_data = file_data[:-i]
+            aes = AES.new(key, AES.MODE_CBC, "\x00"*16)
 
-                return file_data
-            file_data = file_data[:record.size]
-        return file_data
+        while True:
+            data = f1.read(8192)
+            if not data:
+                break
+            if aes:
+                data2 = data = aes.decrypt(data)
+            f2.write(data)
 
+        f1.close()
+        if aes:
+            c = data2[-1]
+            i = ord(c)
+            if i < 17 and data2.endswith(c*i):
+                f2.truncate(f2.tell() - i)
+            else:
+                warn("Bad padding, last byte = 0x%x !" % i)
+
+        f2.close()
