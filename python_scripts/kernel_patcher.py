@@ -19,6 +19,12 @@ devices = {"n82ap": "iPhone1,2",
            }
 
 h=lambda x:x.replace(" ","").decode("hex")
+
+#thx to 0x56
+patchs_ios6 = {
+    "IOAESAccelerator enable UID" : (h("B0 F5 FA 6F 00 F0 92 80"), h("B0 F5 FA 6F 00 20 00 20"))
+}
+
 #https://github.com/comex/datautils0/blob/master/make_kernel_patchfile.c
 patchs_ios5 = {
     "CSED" : (h("df f8 88 33 1d ee 90 0f a2 6a 1b 68"), h("df f8 88 33 1d ee 90 0f a2 6a 01 23")),
@@ -49,7 +55,7 @@ patchs_armv6 = {
     "_PE_i_can_has_debugger" : (h("00 28 0B D0 07 4A 13 68 00 2B 02 D1 03 60 10 68"), h("01 20 70 47 07 4A 13 68 00 2B 02 D1 03 60 10 68")),
     "IOAESAccelerator enable UID" : (h("5D D0 36 4B 9A 42"), h("00 20 36 4B 9A 42")),
     "IOAES gid": (h("FA 23 9B 00 9A 42 05 D1"), h("00 20 00 20 9A 42 05 D1")),
-    "nand-disable-driver": ("nand-disable-driver\x00", "nand-disable\x00\x00\x00\x00\x00\x00\x00\x00")
+    "nand-disable-driver": ("nand-disable-driver\x00", "nand-disable\x00\x00\x00\x00\x00\x00\x00\x00"),
 }
 patchs_ios4_fixnand = {
     "Please reboot => jump to prepare signature": (h("B0 47 DF F8 E8 04 F3 E1"), h("B0 47 DF F8 E8 04 1D E0")),
@@ -122,7 +128,10 @@ def main(ipswname, options):
     elif manifest["ProductVersion"].startswith("4."):
         print "Using iOS 4 kernel patches"
         patchs = patchs_ios4
-    
+    elif manifest["ProductVersion"].startswith("6."):
+        print "Using iOS 6 kernel patches"
+        patchs = patchs_ios6
+
     if options.fixnand:
         if patchs != patchs_ios4:
             print "FAIL : use --fixnand with iOS 4.x IPSW"
@@ -146,8 +155,21 @@ def main(ipswname, options):
     
     ramdiskname = manifest["BuildIdentities"][0]["Manifest"]["RestoreRamDisk"]["Info"]["Path"]
     key,iv = keys.getKeyIV("Ramdisk")
+    ramdisk = ipsw.read(ramdiskname)
+
+    print "Decrypting %s" % ramdiskname
+    ramdisk = decryptImg3(ramdisk, key.decode("hex"), iv.decode("hex"))
+
     customramdisk = "myramdisk_%s.dmg" % devclass
+    f = open(customramdisk, "wb")
+    f.write(ramdisk)
+    f.close()
     
+    if manifest["ProductVersion"].startswith("6."):
+        print "Run build_ramdisk_ios6.sh %s" % customramdisk
+        print "Then redsn0w -i %s -r %s -k %s -a \"-v rd=md0 amfi=0xff cs_enforcement_disable=1\"" % (ipswname, customramdisk, outkernel)
+        return
+
     build_cmd = "./build_ramdisk.sh %s %s %s %s %s" % (ipswname, ramdiskname, key, iv, customramdisk)
     rs_cmd = "redsn0w -i %s -r %s -k %s" % (ipswname, customramdisk, outkernel)
     rdisk_script="""#!/bin/sh
