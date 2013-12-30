@@ -11,6 +11,7 @@ from util.lzss import decompress_lzss
 devices = {"n82ap": "iPhone1,2",
            "n88ap": "iPhone2,1",
            "n90ap": "iPhone3,1",
+           "n90bap": "iPhone3,2",
            "n92ap": "iPhone3,3",
            "n18ap": "iPod3,1",
            "n81ap": "iPod4,1",
@@ -22,7 +23,8 @@ h=lambda x:x.replace(" ","").decode("hex")
 
 #thx to 0x56
 patchs_ios6 = {
-    "IOAESAccelerator enable UID" : (h("B0 F5 FA 6F 00 F0 92 80"), h("B0 F5 FA 6F 00 20 00 20"))
+    "IOAESAccelerator enable UID" : (h("B0 F5 FA 6F 00 F0 92 80"), h("B0 F5 FA 6F 00 20 00 20")),
+    "_PE_i_can_has_debugger" : (h("80 B1 43 F2 BE 01 C0 F2"), h("01 20 70 47 BE 01 C0 F2")),
 }
 
 #https://github.com/comex/datautils0/blob/master/make_kernel_patchfile.c
@@ -160,13 +162,15 @@ def main(ipswname, options):
     print "Decrypting %s" % ramdiskname
     ramdisk = decryptImg3(ramdisk, key.decode("hex"), iv.decode("hex"))
 
+    assert ramdisk[0x400:0x402] == "H+", "H+ magic not found in decrypted ramdisk => bad key/iv ?"
+
     customramdisk = "myramdisk_%s.dmg" % devclass
     f = open(customramdisk, "wb")
     f.write(ramdisk)
     f.close()
     
     if manifest["ProductVersion"].startswith("6."):
-        print "Run build_ramdisk_ios6.sh %s" % customramdisk
+        print "Run ./build_ramdisk_ios6.sh %s" % customramdisk
         print "Then redsn0w -i %s -r %s -k %s -a \"-v rd=md0 amfi=0xff cs_enforcement_disable=1\"" % (ipswname, customramdisk, outkernel)
         return
 
