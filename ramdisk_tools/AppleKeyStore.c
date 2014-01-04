@@ -3,11 +3,14 @@
 #include <string.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <CommonCrypto/CommonCryptor.h> 
+#include <CommonCrypto/CommonHMAC.h>
 #include "IOKit.h"
 #include "IOAESAccelerator.h"
 #include "AppleEffaceableStorage.h"
 #include "AppleKeyStore.h"
 #include "util.h"
+#include "bsdcrypto/rijndael.h"
+#include "bsdcrypto/key_wrap.h"
 
 CFDictionaryRef AppleKeyStore_loadKeyBag(const char* folder, const char* filename)
 {
@@ -103,7 +106,7 @@ CFDictionaryRef AppleKeyStore_loadKeyBag(const char* folder, const char* filenam
     CFPropertyListRef plist2 = CFPropertyListCreateWithData(kCFAllocatorDefault, data2, kCFPropertyListImmutable, NULL, &e);
     if (plist2 == NULL)
     {
-        fprintf(stderr, "AppleKeyStore_loadKeyBag failed to create plist, AES fail decryptedSize=%x?\n", decryptedSize);
+        fprintf(stderr, "AppleKeyStore_loadKeyBag failed to create plist, AES fail ? decryptedSize=%zx\n", decryptedSize);
         
         CFShow(e);
     }
@@ -131,6 +134,42 @@ int AppleKeyStoreKeyBagInit()
 int AppleKeyStoreKeyBagCreateWithData(CFDataRef data, uint64_t* keybagId)
 {
     uint32_t outCnt = 1;
+    aes_key_wrap_ctx ctx;
+    uint8_t hmckkey[32] = {0};
+
+    int retcode = IOKit_call("AppleKeyStore",
+                      kAppleKeyStoreKeyBagCreateWithData,
+                      NULL,
+                      0,
+                      CFDataGetBytePtr(data),
+                      CFDataGetLength(data),
+                      keybagId,
+                      &outCnt,
+                      NULL,
+                      NULL
+                      );
+    if (retcode != 0xE00002C9)
+        return retcode;
+    //HAX to load new iOS 7 keybags on previous iOS kernels
+    uint32_t* kbdata = (uint32_t*) CFDataGetBytePtr(data);
+    if ((kbdata[2] == 'SREV') && (kbdata[4] == 0x04000000))
+    {
+        printf("Patching iOS 7 keybag VERS 4 signature for older kernels\n");
+
+        aes_key_wrap_set_key(&ctx, IOAES_key835(), 16);
+        assert(kbdata[0x38/4] == 'KCMH');
+        assert(!aes_key_unwrap(&ctx, (const uint8_t*) &kbdata[0x38/4 + 2], hmckkey, 4));
+
+        assert(kbdata[CFSwapInt32BigToHost(kbdata[1])/4 + 2] == 'NGIS');
+
+        CCHmac(kCCHmacAlgSHA1,
+                (const void *) &kbdata[2],
+                CFSwapInt32BigToHost(kbdata[1]),
+                hmckkey,
+                32,
+                &kbdata[CFSwapInt32BigToHost(kbdata[1])/4 + 2 + 2]);
+    }
+    outCnt = 1;
     return IOKit_call("AppleKeyStore",
                       kAppleKeyStoreKeyBagCreateWithData,
                       NULL,
@@ -142,7 +181,6 @@ int AppleKeyStoreKeyBagCreateWithData(CFDataRef data, uint64_t* keybagId)
                       NULL,
                       NULL
                       );
-    
 }
 
 int AppleKeyStoreKeyBagSetSystem(uint64_t keybagId)

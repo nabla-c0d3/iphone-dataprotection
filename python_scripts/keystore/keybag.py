@@ -118,7 +118,10 @@ class Keybag(object):
         if len(keybag.get("SIGN", "")):
             hmackey = AESUnwrap(deviceKey, kb.attrs["HMCK"])
             #hmac key and data are swapped (on purpose or by mistake ?)
-            sigcheck = hmac.new(keybag["DATA"], hmackey, sha1).digest()
+            sigcheck = hmac.new(key=keybag["DATA"], msg=hmackey, digestmod=sha1).digest()
+            #fixed in ios 7
+            if kb.attrs["VERS"] >= 4:
+                sigcheck = hmac.new(key=hmackey, msg=keybag["DATA"], digestmod=sha1).digest()
             if sigcheck != keybag.get("SIGN", ""):
                 print "Keybag: SIGN check FAIL"
         return kb
