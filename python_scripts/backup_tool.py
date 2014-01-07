@@ -46,7 +46,7 @@ def extract_backup(backup_path, output_path, password=""):
         mbdb.extract_backup(output_path)
         
         print "You can decrypt the keychain using the following command : "
-        print "python keychain_tool.py -d %s %s" % (output_path + "/keychain-backup.plist", output_path + "/Manifest.plist")
+        print "python keychain_tool.py -d \"%s\" \"%s\"" % (output_path + "/KeychainDomain/keychain-backup.plist", output_path + "/Manifest.plist")
 
 def extract_all():
     if sys.platform == "win32":
