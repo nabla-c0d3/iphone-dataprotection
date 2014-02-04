@@ -47,7 +47,7 @@ int AppleEffaceableStorage__getLockerFromBytes(uint32_t tag, uint8_t* lockers, s
     while (i < lockers_len)
     {
         //printf("p->magic=%x\n", p->magic);
-        if (p->magic != 'Lk') //0x4c6B
+        if (p->magic != 0x4c6B) //'Lk'
             break;
         if (p->len == 0 || ((i+8+p->len) > lockers_len))
             break;

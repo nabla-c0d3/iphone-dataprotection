@@ -35,7 +35,7 @@ void init_usb(CFStringRef serialString) {
     IOUSBDeviceDescriptionRef desc = IOUSBDeviceDescriptionCreateFromDefaults(kCFAllocatorDefault);
     IOUSBDeviceDescriptionSetSerialString(desc, serialString == NULL ? CFSTR("ramdisk - udid fail?") : serialString);
     
-    CFArrayRef usb_interfaces = IOUSBDeviceDescriptionCopyInterfaces(desc);
+    /*CFArrayRef usb_interfaces = IOUSBDeviceDescriptionCopyInterfaces(desc);
     int i;
     for(i=0; i < CFArrayGetCount(usb_interfaces); i++)
     {
@@ -46,7 +46,7 @@ void init_usb(CFStringRef serialString) {
             printf("Found PTP interface\n");
             break;
         }
-    }
+    }*/
     
     IOUSBDeviceControllerRef controller;
     while (IOUSBDeviceControllerCreate(kCFAllocatorDefault, &controller))
@@ -62,6 +62,7 @@ void init_usb(CFStringRef serialString) {
     CFDictionarySetValue(match, CFSTR("IOPropertyMatch"), dict);
     io_service_t service;
     while(1) {
+        CFRetain(match);
         service = IOServiceGetMatchingService(kIOMasterPortDefault, match);
         if(!service) {
             printf("Didn't find, trying again\n");
@@ -70,6 +71,7 @@ void init_usb(CFStringRef serialString) {
             break;
         }
     }
+    CFRelease(match);
     IOCFPlugInInterface **iface;
     SInt32 score;
     printf("123\n");
@@ -90,15 +92,15 @@ void init_usb(CFStringRef serialString) {
     printf("%p\n", table[0x10/4]);
     
     //open IOUSBDeviceInterfaceInterface
-    (!table[0x10/4](thing, 0));
+    table[0x10/4](thing, 0);
     //set IOUSBDeviceInterfaceInterface class
-    (!table[0x2c/4](thing, 0xff, 0));
+    table[0x2c/4](thing, 0xff, 0);
     //set IOUSBDeviceInterfaceInterface sub-class
-    (!table[0x30/4](thing, 0x50, 0));
+    table[0x30/4](thing, 0x50, 0);
     //set IOUSBDeviceInterfaceInterface protocol
-    (!table[0x34/4](thing, 0x43, 0));
+    table[0x34/4](thing, 0x43, 0);
     //commit IOUSBDeviceInterfaceInterface configuration
-    (!table[0x44/4](thing, 0));
+    table[0x44/4](thing, 0);
     IODestroyPlugInInterface(iface);
     //assert(!table[0x14/4](thing, 0));
 }

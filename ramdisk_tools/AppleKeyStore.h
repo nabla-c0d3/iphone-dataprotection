@@ -81,3 +81,5 @@ int AppleKeyStore_unlockKeybagFromUserland(KeyBag* kb,
                                             const char* passcode,
                                             size_t passcodeLen,
                                             uint8_t* key835);
+
+CFMutableDictionaryRef AppleKeyStore_getClassKeys(KeyBag*);

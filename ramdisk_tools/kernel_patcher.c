@@ -44,7 +44,7 @@ int patch_IOAESAccelerator()
     while( addr < (0x80002000 + 0xA00000))
     {
         vm_read(kernel_task, addr, 2048, &buf, &sz);
-        if( buf == NULL || sz == 0)
+        if( buf == 0 || sz == 0)
             continue;
         uint8_t* p = (uint8_t*) buf;
         

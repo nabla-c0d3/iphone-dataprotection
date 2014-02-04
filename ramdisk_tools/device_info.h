@@ -2,4 +2,4 @@
 #define HGVERSION "unknown"
 #endif
 
-CFDictionaryRef device_info(int socket, CFDictionaryRef request);
+CFMutableDictionaryRef device_info(int socket, CFDictionaryRef request);

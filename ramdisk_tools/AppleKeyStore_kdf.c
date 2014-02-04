@@ -28,7 +28,7 @@ int AppleKeyStore_getPasscodeKey(KeyBag* keybag,
                                  uint8_t* passcodeKey)
 {
     //One PBKDF2 iter, hardcoded salt length
-    pkcs5_pbkdf2(passcode, passcodeLen, keybag->salt, 20, passcodeKey, 32, 1);
+    pkcs5_pbkdf2(passcode, passcodeLen, (const char*) keybag->salt, 20, passcodeKey, 32, 1);
     
     return AppleKeyStore_derivation(passcodeKey, 32, keybag->iter, keybag->version);
 }

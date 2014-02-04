@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <sys/sysctl.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 #include "IOAESAccelerator.h"
@@ -14,7 +15,7 @@
 uint8_t lockers[960]={0};
 uint8_t lwvm[80]={0};
 
-CFDictionaryRef device_info(int socket, CFDictionaryRef request)
+CFMutableDictionaryRef device_info(int socket, CFDictionaryRef request)
 {
     uint8_t dkey[40]={0};
     uint8_t emf[36]={0};
@@ -79,7 +80,7 @@ CFDictionaryRef device_info(int socket, CFDictionaryRef request)
     sysctlbyname("kern.bootargs", bootargs, &bootargs_len, NULL, 0);
     if (bootargs_len > 1)
     {
-        CFStringRef bootargsString = CFStringCreateWithBytes(kCFAllocatorDefault, bootargs, bootargs_len - 1, kCFStringEncodingASCII, 0);
+        CFStringRef bootargsString = CFStringCreateWithBytes(kCFAllocatorDefault, (const UInt8*) bootargs, bootargs_len - 1, kCFStringEncodingASCII, 0);
         CFDictionaryAddValue(out, CFSTR("kern.bootargs"), bootargsString);
         CFRelease(bootargsString);
     }

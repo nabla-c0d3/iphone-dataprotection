@@ -19,21 +19,29 @@ char* bruteforceWithAppleKeyStore(CFDataRef kbkeys, int (*callback)(void*,int), 
 {
     uint64_t keybag_id = 0;
     int i;
-    
+
     char* passcode = (char*) malloc(5);
     memset(passcode, 0, 5);
 
     AppleKeyStoreKeyBagInit();
-    AppleKeyStoreKeyBagCreateWithData(kbkeys, &keybag_id);
+
+    int r = AppleKeyStoreKeyBagCreateWithData(kbkeys, &keybag_id);
+    if (r)
+    {
+        printf("AppleKeyStoreKeyBagCreateWithData ret=%x\n", r);
+        free(passcode);
+        return NULL;
+    }
     //printf("keybag id=%x\n", (uint32_t) keybag_id);
     AppleKeyStoreKeyBagSetSystem(keybag_id);
     
-    CFDataRef data = CFDataCreateWithBytesNoCopy(0, (const UInt8*) passcode, 4, NULL);
+    CFDataRef data = CFDataCreateWithBytesNoCopy(0, (const UInt8*) passcode, 4, kCFAllocatorNull);
     
     io_connect_t conn = IOKit_getConnect("AppleKeyStore");
     
     if (!AppleKeyStoreUnlockDevice(conn, data))
     {
+        CFRelease(data);
         return passcode;
     }
 
@@ -50,10 +58,12 @@ char* bruteforceWithAppleKeyStore(CFDataRef kbkeys, int (*callback)(void*,int), 
         }
         if (!AppleKeyStoreUnlockDevice(conn, data))
         {
+            CFRelease(data);
             return passcode;
         }
     }
     free(passcode);
+    CFRelease(data);
     return NULL;
 }
 
@@ -247,7 +257,7 @@ CFDictionaryRef remote_aes(int socket, CFDictionaryRef dict)
     {
         if (CFGetTypeID(iv) != CFDataGetTypeID())
             return NULL;
-        iv2 = CFDataGetBytePtr(iv);
+        iv2 = (uint8_t*) CFDataGetBytePtr(iv);
     }
     len = CFDataGetLength(input);
     if (len % 16 != 0)

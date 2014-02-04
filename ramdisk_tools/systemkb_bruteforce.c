@@ -7,9 +7,8 @@
 #include "IOAESAccelerator.h"
 #include "registry.h"
 #include "util.h"
-#include "image.h"
+#include "device_info.h"
 #include "remote_functions.h"
-
 /*
  #define MobileKeyBagBase 0x354cb000
  
@@ -66,16 +65,22 @@ char* bruteforceWithAppleKeyStore(CFDataRef kbkeys)
 {
     uint64_t keybag_id = 0;
     int i;
-    
     char* passcode = (char*) malloc(5);
     memset(passcode, 0, 5);
 
     AppleKeyStoreKeyBagInit();
-    AppleKeyStoreKeyBagCreateWithData(kbkeys, &keybag_id);
+    int r = AppleKeyStoreKeyBagCreateWithData(kbkeys, &keybag_id);
+    if (r)
+    {
+        printf("AppleKeyStoreKeyBagCreateWithData ret=%x\n", r);
+        free(passcode);
+        return NULL;
+    }
+
     printf("keybag id=%x\n", (uint32_t) keybag_id);
     AppleKeyStoreKeyBagSetSystem(keybag_id);
     
-    CFDataRef data = CFDataCreateWithBytesNoCopy(0, (const UInt8*) passcode, 4, NULL);
+    CFDataRef data = CFDataCreateWithBytesNoCopy(0, (const UInt8*) passcode, 4, kCFAllocatorNull);
     
     io_connect_t conn = IOKit_getConnect("AppleKeyStore");
     
