@@ -1,3 +1,5 @@
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-declarations"
 /*
  * Copyright (c) 2008 Apple Inc. All rights reserved.
  *
@@ -268,3 +270,4 @@ AVAILABLE_MAC_OS_X_VERSION_10_5_AND_LATER;
 __END_DECLS
 
 #endif
+#pragma clang diagnostic pop

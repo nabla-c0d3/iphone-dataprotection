@@ -14,6 +14,7 @@ all: $(SDK) device_infos restored_external bruteforce ioflashstoragekit
 $(SDK):
 	@echo "iOS SDK not found in $(SDK)"
 	@echo "=> check SDKVER/SDK in Makefile"
+	exit -1
 
 IOKit:
 	ln -s /System/Library/Frameworks/IOKit.framework/Versions/Current/Headers IOKit
