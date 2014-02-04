@@ -6,34 +6,7 @@ then
     exit
 fi
 
-if [ $# -lt 1 ]
-then
-    echo "Syntax: $0 DECRYPTED_RAMDISK_DMG"
-    exit
-fi
-
-if [ ! -f ssh.tar.gz ]
-then
-    echo "Downloading ssh.tar.gz from googlecode"
-    curl -O http://iphone-dataprotection.googlecode.com/files/ssh.tar.gz
-fi
-
-if [ ! -f libncurses.5.dylib ]
-then
-    echo "Downloading libncurses.5.dylib from googlecode"
-    curl -O http://iphone-dataprotection.googlecode.com/files/libncurses.5.dylib
-fi
-
-echo "Rebuilding ramdisk_tools"
-
-./build_tools.sh
-
-#compiling in a vmware shared folder can produce binaries filled with zeroes !
-if [ ! -f ramdisk_tools/restored_external ] || [ "$(file -b ramdisk_tools/restored_external)" == "data" ]
-then
-    echo "ramdisk_tools/restored_external not found or invalid, check compilation output for errors"
-    exit -1
-fi
+function build_ramdisk {
 
 RAMDISK=$1
 
@@ -61,22 +34,26 @@ rm -rf /Volumes/ramdisk/usr/share/progressui/
 if [ ! -f /Volumes/ramdisk/sbin/sshd ]
 then
     echo "Unpacking ssh.tar.gz on ramdisk..."
-    tar -C /Volumes/ramdisk/ -xzkP <  ssh.tar.gz
+    tar -C /Volumes/ramdisk/ -xzkP <  data/ssh.tar.gz
     echo "^^ This tar error message is okay"
 fi
 
 if [ ! -f /Volumes/ramdisk/usr/lib/libncurses.5.4.dylib ]
 then
     echo "Adding libncurses..."
-    cp libncurses.5.dylib /Volumes/ramdisk/usr/lib/libncurses.5.4.dylib
+    cp data/libncurses.5.dylib /Volumes/ramdisk/usr/lib/libncurses.5.4.dylib
 fi
 
 echo "Adding/updating ramdisk_tools binaries on ramdisk..."
 cp ramdisk_tools/restored_external /Volumes/ramdisk/usr/local/bin/
-cp ramdisk_tools/bruteforce ramdisk_tools/device_infos /Volumes/ramdisk/var/root
-cp ramdisk_tools/scripts/* /Volumes/ramdisk/var/root
+cp ramdisk_tools/ioflashstoragekit ramdisk_tools/bruteforce ramdisk_tools/device_infos /Volumes/ramdisk/var/root/
+cp ramdisk_tools/scripts/* /Volumes/ramdisk/var/root/
+chmod +x /Volumes/ramdisk/var/root/*
 
-ls -laht /Volumes/ramdisk/usr/local/bin/
+cp data/bin/* /Volumes/ramdisk/bin/
+
+
+ls -laht /Volumes/ramdisk/var/root/
 
 #if present, copy ssh public key to ramdisk
 if [ -f ~/.ssh/id_rsa.pub ] && [ ! -d /Volumes/ramdisk/var/root/.ssh ]
@@ -87,3 +64,32 @@ then
 fi
 
 hdiutil eject /Volumes/ramdisk
+}
+
+echo "Rebuilding ramdisk_tools"
+
+./build_tools.sh
+
+#show armv6/armv7
+lipo -info ramdisk_tools/restored_external
+
+#compiling in a vmware shared folder can produce binaries filled with zeroes !
+if [ ! -f ramdisk_tools/restored_external ] || [ "$(file -b ramdisk_tools/restored_external)" == "data" ]
+then
+    echo "ramdisk_tools/restored_external not found or invalid, check compilation output for errors"
+    exit -1
+fi
+
+if [ $# -eq 1 ]
+then
+    build_ramdisk $1
+else
+    shopt -s nullglob
+    for RAMDISK in data/boot/*.dmg
+    do
+        echo "Updating $RAMDISK"
+        build_ramdisk $RAMDISK
+    done
+fi
+
+
