@@ -1,3 +1,4 @@
+#!/usr/bin/python
 from cmd import Cmd
 from firmware.img3 import Img3
 from hfs.emf import cprotect_xattr, PROTECTION_CLASSES

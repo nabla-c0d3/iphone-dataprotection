@@ -1,3 +1,4 @@
+#!/usr/bin/python
 from optparse import OptionParser
 from keystore.keybag import Keybag
 from keychain import keychain_load

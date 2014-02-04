@@ -1,3 +1,4 @@
+#!/usr/bin/python
 from optparse import OptionParser
 from hfs.emf import EMFVolume
 from util.bdev import FileBlockDevice

@@ -1,3 +1,4 @@
+#!/usr/bin/python
 from backups.backup3 import decrypt_backup3
 from backups.backup4 import MBDB
 from keystore.keybag import Keybag
