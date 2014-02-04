@@ -6,7 +6,7 @@ import zipfile
 import struct
 import sys
 from optparse import OptionParser
-from Crypto.Cipher import AES
+from crypto import aes_ctypes as AES
 from util.lzss import decompress_lzss
 
 devices = {"n82ap": "iPhone1,2",
