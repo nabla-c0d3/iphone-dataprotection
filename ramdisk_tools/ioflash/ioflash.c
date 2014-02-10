@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/mount.h>
 #include <fcntl.h>
@@ -8,75 +9,13 @@
 #include <CommonCrypto/CommonCryptor.h>
 #include <IOKit/IOKitLib.h>
 #include "ioflash.h"
+#include "IOFlashPartitionScheme.h"
 
 /**
 used to decrypt special pages when checking if the physical banks parameter is correct
 when reading/dumping pages are not decrypted
 **/
 uint8_t META_KEY[16] = {0x92, 0xa7, 0x42, 0xab, 0x08, 0xc9, 0x69, 0xbf, 0x00, 0x6c, 0x94, 0x12, 0xd3, 0xcc, 0x79, 0xa5};
-//uint8_t FILESYSTEM_KEY[16] = {0xf6, 0x5d, 0xae, 0x95, 0x0e, 0x90, 0x6c, 0x42, 0xb2, 0x54, 0xcc, 0x58, 0xfc, 0x78, 0xee, 0xce};
-
-
-uint32_t gDeviceReadID = 0;
-uint32_t gCECount = 0;
-uint32_t gBlocksPerCE = 0;
-uint32_t gPagesPerBlock = 0;
-uint32_t gBytesPerPage = 0;
-uint32_t gBytesPerSpare = 0;
-uint32_t gBootloaderBytes = 0;
-uint32_t gIsBootFromNand = 0;
-uint32_t gPagesPerCE = 0;
-uint32_t gTotalBlocks = 0;
-uint32_t metaPerLogicalPage = 0;
-uint32_t validmetaPerLogicalPage = 0;
-uint32_t banksPerCE = 0;
-uint32_t use_4k_aes_chain = 0;
-uint32_t gFSStartBlock= 0;
-uint32_t gDumpPageSize = 0;
-uint32_t gPPNdevice = 0;
-uint32_t banksPerCEphysical = 1;
-uint32_t bank_address_space = 0;
-uint32_t blocks_per_bank = 0;
-
-//from ioflashstoragetool
-io_service_t fsdService = 0;
-io_connect_t fsdConnection = 0;
-
-
-CFMutableDictionaryRef MakeOneStringProp(CFStringRef key, CFStringRef value)
-{
-    CFMutableDictionaryRef dict  = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);	
-    CFDictionarySetValue(dict, key, value);
-    return dict;
-}
-
-io_service_t _wait_for_io_service_matching_dict(CFDictionaryRef matching)
-{
-    io_service_t  service = 0;
-   /* while(!service) {
-        */CFRetain(matching);
-        service = IOServiceGetMatchingService(kIOMasterPortDefault, matching);
-        //if(service) break;
-        /*sleep(1);
-        //CFRelease(matching);
-    }
-    CFRelease(matching);*/
-    return service;
-}
-
-
-int FSDConnect(const char* name)
-{
-    CFMutableDictionaryRef matching;
-    
-    matching = IOServiceMatching(name);
-    
-    fsdService = IOServiceGetMatchingService(kIOMasterPortDefault, matching);
-    
-    IOServiceOpen(fsdService, mach_task_self(), 0, &fsdConnection);
-    
-    return fsdConnection != 0;
-}
 
 int FSDGetPropertyForKey(io_object_t obj, CFStringRef name, void* out, uint32_t outLen, CFMutableDictionaryRef dict)
 {
@@ -103,82 +42,63 @@ int FSDGetPropertyForKey(io_object_t obj, CFStringRef name, void* out, uint32_t 
         CFDataGetBytes(data, CFRangeMake(0,dataLen < outLen ? dataLen : outLen), out);
         return 1;
     }
+    else if(CFGetTypeID(data) == CFBooleanGetTypeID() && outLen > 0)
+    {
+        *((uint8_t*)out) = CFBooleanGetValue(data);
+    }
+    else
+    {
+        CFShow(name);
+    }
     return 0;
 }
-IOReturn FSDReadPageHelper(struct kIOFlashControllerReadPageIn* in, struct kIOFlashControllerOut* out)
-{
-    size_t outLen = sizeof(struct kIOFlashControllerOut);
-    
-    IOConnectCallStructMethod(fsdConnection,
-                              kIOFlashControllerReadPage,
-                              in,
-                              sizeof(struct kIOFlashControllerReadPageIn),
-                              out,
-                              &outLen);
-    //    fprintf(stderr, "%x %x %x %x %x\n", in->page, in->ce, r, out->ret1, out->ret2);
-    
-    return out->ret1;
-}
 
-IOReturn FSDReadPageWithOptions(uint32_t ceNum,
+IOReturn FSDReadPageWithOptions(IOFlashController_client* iofc,
+                            uint32_t ceNum,
                             uint32_t pageNum,
                             void* buffer,
                             void* spareBuffer,
                             uint32_t spareSize,
                             uint32_t options,
-                            struct kIOFlashControllerOut* out
+                            IOFlashControllerUserClient_OutputStruct* out
                             )
 {
-    struct kIOFlashControllerReadPageIn in;
-    
+    IOFlashControllerUserClient_InputStruct in;
+    size_t outLen = sizeof(IOFlashControllerUserClient_OutputStruct);
+
     in.page = pageNum;
     in.ce = ceNum;
     in.options = options;
     in.buffer = buffer;
-    in.bufferSize = gBytesPerPage;
+    in.bufferSize = iofc->page_bytes;
     in.spare = spareBuffer;
     in.spareSize = spareSize;
-    return FSDReadPageHelper(&in, out);
+
+    IOConnectCallStructMethod(iofc->iofc_connect,
+                              kIOFlashControllerUserClientReadPage,
+                              (const void*) &in,
+                              sizeof(IOFlashControllerUserClient_InputStruct),
+                              out,
+                              &outLen);
+
+    return out->ret1;
 }
 
-IOReturn FSDReadBootPage(uint32_t ceNum, uint32_t pageNum,uint32_t* buffer, struct kIOFlashControllerOut* out)
+IOReturn FSDReadBootPage(IOFlashController_client* iofc,
+                         uint32_t ceNum,
+                         uint32_t pageNum,
+                         uint8_t* buffer,
+                         IOFlashControllerUserClient_OutputStruct* out)
 {
-    return FSDReadPageWithOptions(ceNum, pageNum, buffer, NULL, 0, kIOFlashStorageOptionBootPageIO, out);
+    return FSDReadPageWithOptions(iofc,
+                                   ceNum,
+                                   pageNum,
+                                   buffer,
+                                   NULL,
+                                   0,
+                                   kIOFlashStorageOptionBootPageIO,
+                                   out);
 }
-
-void findPartitionLocation(CFStringRef contentHint, CFMutableDictionaryRef dict)
-{
-    const void* keys[2] = {CFSTR("Block Count"), CFSTR("Block Offset")};
-    const void* values[2] = {NULL, NULL};
-    
-    CFMutableDictionaryRef match = MakeOneStringProp(CFSTR("IOProviderClass"), CFSTR("IOFlashStoragePartition"));
-    CFMutableDictionaryRef iopmatch = MakeOneStringProp(CFSTR("Content Hint"), contentHint);
-    CFDictionarySetValue(match, CFSTR("IOPropertyMatch"), iopmatch);
-    
-    CFRelease(iopmatch);
-    
-    io_service_t service = _wait_for_io_service_matching_dict(match);
-    if (service)
-    {
-        CFNumberRef blockCount = (CFNumberRef) IORegistryEntryCreateCFProperty(service, CFSTR("Block Count"), kCFAllocatorDefault, 0);
-        CFNumberRef blockOffset = (CFNumberRef) IORegistryEntryCreateCFProperty(service, CFSTR("Block Offset"), kCFAllocatorDefault, 0);
-        if (dict != NULL)
-        {
-            values[0] = (void*) blockCount;
-            values[1] = (void*) blockOffset;
-            CFDictionaryRef d = CFDictionaryCreate(kCFAllocatorDefault, keys, values, 2, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-            if (d != NULL)
-                CFDictionaryAddValue(dict, contentHint, d);
-        }
-        if( CFStringCompare(contentHint, CFSTR("Filesystem"), 0) == kCFCompareEqualTo)
-        {
-            CFNumberGetValue(blockOffset, kCFNumberIntType, &gFSStartBlock);
-        }
-    }
-    CFRelease(match);
-}
-
-
 
 //openiBoot/util.c
 uint32_t next_power_of_two(uint32_t n) {    
@@ -190,9 +110,9 @@ uint32_t next_power_of_two(uint32_t n) {
     return val;
 }
 
-void generate_IV(unsigned long lbn, unsigned long *iv)
+void generate_IV(uint32_t lbn, uint32_t *iv)
 {
-    int i;
+    uint32_t i;
     for(i = 0; i < 4; i++)
     {
         if(lbn & 1)
@@ -207,7 +127,7 @@ void decrypt_page(uint8_t* data, uint32_t dataLength, uint8_t* key, uint32_t key
 {
     char iv[16];
     size_t dataOutMoved=dataLength;
-    generate_IV(pn, (unsigned long*) iv);
+    generate_IV(pn, (uint32_t*) iv);
     
     CCCryptorStatus s = CCCrypt(kCCDecrypt,
                                 kCCAlgorithmAES128,
@@ -217,7 +137,7 @@ void decrypt_page(uint8_t* data, uint32_t dataLength, uint8_t* key, uint32_t key
                                 (const void*) iv,
                                 (const void*) data,
                                 dataLength,
-                                (const void*) data,
+                                (void*) data,
                                 dataLength,
                                 &dataOutMoved);
     if (s != kCCSuccess)
@@ -226,224 +146,312 @@ void decrypt_page(uint8_t* data, uint32_t dataLength, uint8_t* key, uint32_t key
     }
 }
 
-void set_physical_banks(int n)
+void set_physical_banks(IOFlashController_client* iofc, uint32_t n)
 {
-    banksPerCEphysical = n;
-    blocks_per_bank = gBlocksPerCE / banksPerCEphysical;
+    iofc->banksPerCEphysical = n;
+    iofc->blocks_per_bank = iofc->ce_blocks / iofc->banksPerCEphysical;
     
-    if((gBlocksPerCE & (gBlocksPerCE-1)) == 0)
+    if((iofc->ce_blocks & (iofc->ce_blocks-1)) == 0)
     {
         // Already a power of two.
-        bank_address_space = blocks_per_bank;
-        //total_block_space = gBlocksPerCE;
+        iofc->bank_address_space = iofc->blocks_per_bank;
+        //total_block_space = ce_blocks;
     }
     else
     {
         // Calculate the bank address space.
-        bank_address_space = next_power_of_two(blocks_per_bank);
+        iofc->bank_address_space = next_power_of_two(iofc->blocks_per_bank);
         //total_block_space = ((banksPerCEphysical-1)*bank_address_space) + blocks_per_bank;
     }
 }
 
 //"bruteforce" the number of physical banks
 //except for PPN devices, DEVICEINFOBBT special pages should always be somewhere at the end
-void check_special_pages()
+void check_special_pages(IOFlashController_client* iofc)
 {
-    if(gPPNdevice)
-    {
-        fprintf(stderr, "PPN device, i don't know how to guess the number of physical banks, assuming 1\n");
-        set_physical_banks(1);
-        return;
-    }
-
     uint32_t i,x=1;
     uint32_t ok = 0;
     uint32_t bank, block, page;
-    uint8_t* pageBuffer = (uint8_t*) valloc(gDumpPageSize);
-
-    printf("Searching for correct banksPerCEphysical value ...\n");
+    uint8_t* pageBuffer;
     
+    if(iofc->ppn_device)
+    {
+        fprintf(stderr, "PPN device, skipping check_special_pages\n");
+        set_physical_banks(iofc, 1);
+        return;
+    }
+
+    pageBuffer = (uint8_t*) valloc(iofc->dump_page_size);
+
+    printf("Searching for special pages ...\n");
+
     while(!ok && x < 10)
     {
-        set_physical_banks(x);
-        bank = banksPerCEphysical - 1;
+        set_physical_banks(iofc, x);
+        bank = iofc->banksPerCEphysical - 1;
         
-        for(block = blocks_per_bank-1; !ok && block > blocks_per_bank-10 ; block--)
+        for(block = iofc->blocks_per_bank-1; !ok && block > iofc->blocks_per_bank-10 ; block--)
         {
-        page = (bank_address_space * bank +  block) * gPagesPerBlock;
+            page = (iofc->bank_address_space * bank +  block) * iofc->block_pages;
 
-        struct kIOFlashControllerOut *out = (&pageBuffer[gBytesPerPage + metaPerLogicalPage]);
-     
-        for(i=0; i < gPagesPerBlock; i++)
-        {
-            if(FSDReadPageWithOptions(0, page + i, pageBuffer, &pageBuffer[gBytesPerPage], metaPerLogicalPage, 0, out))
-                continue;
-            
-            if(pageBuffer[gBytesPerPage] != 0xA5)
-                continue;
-            if(!memcmp(pageBuffer, "DEVICEINFOBBT", 13))
+            IOFlashControllerUserClient_OutputStruct *out = (IOFlashControllerUserClient_OutputStruct*) (&pageBuffer[iofc->page_bytes + iofc->meta_per_logical_page]);
+         
+            for(i=0; i < iofc->block_pages; i++)
             {
-                printf("Found cleartext DEVICEINFOBBT at block %d page %d with banksPerCEphyiscal=%d\n", blocks_per_bank*bank +block, i, banksPerCEphysical);
-                ok = 1;
-                break;
+                if(FSDReadPageWithOptions(iofc, 0, page + i, pageBuffer, &pageBuffer[iofc->page_bytes], iofc->meta_per_logical_page, 0, out))
+                    continue;
+                if(pageBuffer[iofc->page_bytes] != 0xA5)
+                    continue;
+                if(!memcmp(pageBuffer, "DEVICEINFOBBT", 13))
+                {
+                    printf("Found cleartext DEVICEINFOBBT at block %d page %d with banksPerCEphyiscal=%d\n", iofc->blocks_per_bank*bank +block, i, iofc->banksPerCEphysical);
+                    ok = 1;
+                    break;
+                }
+                decrypt_page(pageBuffer, iofc->page_bytes, META_KEY, kCCKeySizeAES128, page + i);
+                if(!memcmp(pageBuffer, "DEVICEINFOBBT", 13))
+                {
+                    printf("Found encrypted DEVICEINFOBBT at block %d page %d with banksPerCEphyiscal=%d\n", iofc->blocks_per_bank*bank +block, i, iofc->banksPerCEphysical);
+                    ok = 1;
+                    break;
+                }
             }
-            decrypt_page(pageBuffer, gBytesPerPage, META_KEY, kCCKeySizeAES128, page + i);
-            if(!memcmp(pageBuffer, "DEVICEINFOBBT", 13))
-            {
-                printf("Found encrypted DEVICEINFOBBT at block %d page %d with banksPerCEphyiscal=%d\n", blocks_per_bank*bank +block, i, banksPerCEphysical);
-                ok = 1;
-                break;
-            }
-        }
         }
         x++;
     }
     if(!ok)
     {
-        fprintf(stderr, "Couldnt guess the number of physical banks, exiting\n");
-        exit(0);
+        fprintf(stderr, "!!!! Couldnt guess the number of physical banks, assuming 1 !!!!\n");
+        set_physical_banks(iofc, 1);
     }
     free(pageBuffer);
     return;
 }
 
 
-//XXX dont read the NAND from this function as it can be called from multiple processes
-CFMutableDictionaryRef FSDGetInfo(int printInfo)
+IOFlashPartitionScheme* find_boot_blocks(IOFlashController_client* iofc)
 {
-    io_iterator_t iterator = 0;
-    io_object_t obj = 0;
-    
-    FSDConnect("IOFlashController");
-    
-    if(IORegistryEntryCreateIterator(fsdService, "IOService",0, &iterator))
-        return NULL;
-    
-    obj = IOIteratorNext(iterator);
-    if (!obj)
-        return NULL;
+    IOFlashPartitionScheme* fps = NULL;
+    int ceNum=0,pageNum=0;
+    IOFlashControllerUserClient_OutputStruct out = {0};
 
-    CFMutableDictionaryRef dict = CFDictionaryCreateMutable (kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    uint8_t* pageBuffer = (uint8_t*) valloc(iofc->page_bytes);
     
-    FSDGetPropertyForKey(obj, CFSTR("device-readid"), &gDeviceReadID, sizeof(gDeviceReadID), dict);
-    FSDGetPropertyForKey(obj, CFSTR("#ce"), &gCECount, sizeof(gCECount), dict);
-    FSDGetPropertyForKey(obj, CFSTR("#ce-blocks"), &gBlocksPerCE, sizeof(gBlocksPerCE), dict);
-    FSDGetPropertyForKey(obj, CFSTR("#block-pages"), &gPagesPerBlock, sizeof(gPagesPerBlock), dict);
-    FSDGetPropertyForKey(obj, CFSTR("#page-bytes"), &gBytesPerPage, sizeof(gBytesPerPage), dict);
-    FSDGetPropertyForKey(obj, CFSTR("#spare-bytes"), &gBytesPerSpare, sizeof(gBytesPerSpare), dict);
-    FSDGetPropertyForKey(obj, CFSTR("#bootloader-bytes"), &gBootloaderBytes, sizeof(gBootloaderBytes), dict);
-   
-    FSDGetPropertyForKey(obj, CFSTR("metadata-whitening"), NULL, 0, dict);
-    FSDGetPropertyForKey(obj, CFSTR("name"), NULL, 0, dict);
-    FSDGetPropertyForKey(obj, CFSTR("is-bfn-partitioned"), NULL, 0, dict);
-    FSDGetPropertyForKey(obj, CFSTR("bbt-format"), NULL, 0, dict);
-    //FSDGetPropertyForKey(obj, CFSTR("channels"), NULL, 0, dict);
-    FSDGetPropertyForKey(obj, CFSTR("vendor-type"), NULL, 0, dict);
-    FSDGetPropertyForKey(obj, CFSTR("ppn-device"), &gPPNdevice, sizeof(gPPNdevice), dict);
-
-
-    FSDGetPropertyForKey(obj, CFSTR("valid-meta-per-logical-page"), &validmetaPerLogicalPage, sizeof(gBytesPerSpare), dict);
-    FSDGetPropertyForKey(obj, CFSTR("meta-per-logical-page"), &metaPerLogicalPage, sizeof(gBytesPerSpare), dict);
-    if (metaPerLogicalPage == 0)
+    if (pageBuffer == NULL)
     {
-        metaPerLogicalPage = 12;//default value?
+        fprintf(stderr, "find_boot_blocks valloc(%d) FAIL", iofc->page_bytes);
+        return NULL;
     }
-    
-    //XXX: returns (possibly wrong) default value (1) when nand-disable-driver is set, use vendor-type + info from openiboot to get correct value : bank-per-ce VFL (!=physical banks)
-    FSDGetPropertyForKey(obj, CFSTR("banks-per-ce"), &banksPerCE, sizeof(gBytesPerSpare), dict);
-    FSDGetPropertyForKey(obj, CFSTR("use-4k-aes-chain"), &use_4k_aes_chain, sizeof(gBytesPerSpare), dict);
-     
-    gPagesPerCE = gBlocksPerCE * gPagesPerBlock;
-    gTotalBlocks = gCECount * gBlocksPerCE;
-     
-    FSDGetPropertyForKey(obj, CFSTR("boot-from-nand"), &gIsBootFromNand, sizeof(gIsBootFromNand), dict);
-    
-    CFMutableDictionaryRef dictPartitions = CFDictionaryCreateMutable (kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-    findPartitionLocation(CFSTR("Boot Block"), dictPartitions);
-    findPartitionLocation(CFSTR("Effaceable"), dictPartitions);
-    findPartitionLocation(CFSTR("NVRAM"), dictPartitions);
-    findPartitionLocation(CFSTR("Firmware"), dictPartitions);
-    findPartitionLocation(CFSTR("Filesystem"), dictPartitions);
-    /*findPartitionLocation(CFSTR("Diagnostic Data"));
-    findPartitionLocation(CFSTR("System Config"));
-    findPartitionLocation(CFSTR("Bad Block Table"));*/
-    //findPartitionLocation(CFSTR("Unpartitioned"));//never matches
 
-    CFDictionaryAddValue(dict, CFSTR("partitions"), dictPartitions);
-    IOObjectRelease(obj);
-    IOObjectRelease(iterator);
-    
-    gDumpPageSize = gBytesPerPage + metaPerLogicalPage + sizeof(struct kIOFlashControllerOut);
-    CFNumberRef n = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &gDumpPageSize);
-    CFDictionarySetValue(dict, CFSTR("dumpedPageSize"), n);
-    CFRelease(n);
-    
-    if (printInfo)
+    //find partition table
+    for(ceNum=0; ceNum < iofc->num_ce; ceNum++)
     {
-        uint64_t total_size = ((uint64_t)gBytesPerPage) * ((uint64_t) (gPagesPerBlock * gBlocksPerCE * gCECount));
-        total_size /= 1024*1024*1024;
-        fprintf(stderr, "NAND configuration: %uGiB (%d CEs of %d blocks of %d pages of %d bytes data, %d bytes spare\n",
-            (uint32_t) total_size,
-            gCECount,
-            gBlocksPerCE,
-            gPagesPerBlock,
-            gBytesPerPage,
-            gBytesPerSpare);
+        for(pageNum=0; pageNum < iofc->block_pages; pageNum++)
+        {
+            if (FSDReadBootPage(iofc, ceNum, pageNum, pageBuffer, &out) != 0)
+                continue;
+            
+            fps = IOFlashPartitionScheme_init(iofc, pageBuffer);
+            if (fps != NULL)
+                break;
+        }
     }
-    
-    set_physical_banks(1);
-    return dict;
+    free(pageBuffer);
+    return fps;
 }
 
-CFDictionaryRef nand_dump(int fd)
+CFMutableDictionaryRef FSDGetInfo()
 {
-    uint64_t totalSize = (uint64_t)gPagesPerBlock * (uint64_t)gBlocksPerCE * (uint64_t)gCECount * (uint64_t)gDumpPageSize;
+    CFMutableDictionaryRef      iofsd_properties;
+    IOFlashController_client* iofc = IOFlashController_init();
+    
+    iofsd_properties = iofc->iofsd_properties;
+
+    CFNumberRef n = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &iofc->dump_page_size);
+    CFDictionarySetValue(iofsd_properties, CFSTR("dumpedPageSize"), n);
+    CFRelease(n);
+    
+    return iofsd_properties;
+}
+
+//XXX dont read the NAND from this function as it can be called from multiple processes
+
+IOFlashController_client* IOFlashController_init()
+{
+    IOFlashController_client*   iofc;
+    CFMutableDictionaryRef      iofsd_properties;
+    CFMutableDictionaryRef      matchingDict;
+    kern_return_t               status;
+    io_service_t                fsd, fc;
+    io_connect_t                conn;
+    io_iterator_t               iterator = 0;
+    
+    //open IOFlashController 
+    matchingDict = IOServiceMatching("IOFlashController");
+    fc = IOServiceGetMatchingService(kIOMasterPortDefault, matchingDict);
+    if (!fc)
+    {
+        fprintf(stderr, "IOServiceGetMatchingService IOFlashController failed\n");
+        return NULL;
+    }
+    status = IOServiceOpen(fc, mach_task_self(), 0, &conn);
+    if (status != KERN_SUCCESS)
+    {
+        fprintf(stderr, "IOServiceOpen IOFlashController failed %x\n", status);
+        return NULL;
+    }
+    
+    if(IORegistryEntryCreateIterator(fc, "IOService",0, &iterator))
+    {
+        fprintf(stderr, "IORegistryEntryCreateIterator failed\n");
+        return NULL;
+    }
+
+    while(1)
+    {
+        fsd = IOIteratorNext(iterator);
+        if (!fsd)
+        {
+            printf("IOFlashStorageDevice not found\n");
+            return NULL;
+        }
+        if(IOObjectConformsTo(fsd, "IOFlashStorageDevice"))
+        {
+            break;
+        }
+    }
+
+    iofc = malloc(sizeof(IOFlashController_client));
+
+    if (iofc == NULL)
+    {
+        fprintf(stderr, "IOFlashController_client malloc failed\n");
+        return NULL;
+    }
+    memset((void*) iofc, 0, sizeof(IOFlashController_client));
+
+    iofc->iofc_connect = conn;
+
+    status = IORegistryEntryCreateCFProperties(fsd, &iofsd_properties, kCFAllocatorDefault, kNilOptions);
+    assert( KERN_SUCCESS == status );
+    assert( CFDictionaryGetTypeID() == CFGetTypeID(iofsd_properties));
+
+    iofc->iofsd_properties = iofsd_properties;
+
+    FSDGetPropertyForKey(fsd, CFSTR("#ce"), &iofc->num_ce, sizeof(iofc->num_ce), NULL);
+    FSDGetPropertyForKey(fsd, CFSTR("#ce-blocks"), &iofc->ce_blocks, sizeof(iofc->ce_blocks), NULL);
+    FSDGetPropertyForKey(fsd, CFSTR("#block-pages"), &iofc->block_pages, sizeof(iofc->block_pages), NULL);
+    FSDGetPropertyForKey(fsd, CFSTR("#page-bytes"), &iofc->page_bytes, sizeof(iofc->page_bytes), NULL);
+    FSDGetPropertyForKey(fsd, CFSTR("#spare-bytes"), &iofc->spare_bytes, sizeof(iofc->spare_bytes), NULL);
+    FSDGetPropertyForKey(fsd, CFSTR("#bootloader-bytes"), &iofc->bootloader_bytes, sizeof(iofc->bootloader_bytes), NULL);
+
+    FSDGetPropertyForKey(fsd, CFSTR("logical-page-size"), &iofc->logical_page_size, sizeof(iofc->logical_page_size), NULL);
+    FSDGetPropertyForKey(fsd, CFSTR("boot-from-nand"), &iofc->boot_from_nand, sizeof(iofc->boot_from_nand), NULL);
+
+    FSDGetPropertyForKey(fsd, CFSTR("valid-meta-per-logical-page"), &iofc->valid_meta_per_logical_page, sizeof(iofc->valid_meta_per_logical_page), NULL);
+    FSDGetPropertyForKey(fsd, CFSTR("meta-per-logical-page"), &iofc->meta_per_logical_page, sizeof(iofc->meta_per_logical_page), NULL);
+
+    FSDGetPropertyForKey(fsd, CFSTR("ppn-device"), &iofc->ppn_device, sizeof(iofc->ppn_device), NULL);
+    FSDGetPropertyForKey(fsd, CFSTR("slc-pages"), &iofc->slc_pages, sizeof(iofc->slc_pages), NULL);
+    FSDGetPropertyForKey(fsd, CFSTR("cau-bits"), &iofc->cau_bits, sizeof(iofc->cau_bits), NULL);
+    FSDGetPropertyForKey(fsd, CFSTR("page-bits"), &iofc->page_bits, sizeof(iofc->page_bits), NULL);
+    FSDGetPropertyForKey(fsd, CFSTR("block-bits"), &iofc->block_bits, sizeof(iofc->block_bits), NULL);
+
+    if (iofc->meta_per_logical_page == 0)
+    {
+        iofc->meta_per_logical_page = 12;//default value?
+    }
+    if (iofc->ppn_device)
+    {
+        //read full spare with AppleIOPFMI::_fmiPatchMetaFringe nopped
+        iofc->meta_per_logical_page = iofc->spare_bytes;
+    }
+
+    IOObjectRelease(fsd);
+
+    iofc->pages_per_ce = iofc->ce_blocks * iofc->block_pages;
+    iofc->total_blocks = iofc->num_ce * iofc->ce_blocks;
+
+    iofc->dump_page_size = iofc->page_bytes + iofc->meta_per_logical_page + sizeof(IOFlashControllerUserClient_OutputStruct);
+
+    iofc->total_size = ((uint64_t)iofc->page_bytes) * ((uint64_t) (iofc->block_pages * iofc->ce_blocks * iofc->num_ce));
+
+    set_physical_banks(iofc, 1);
+
+    return iofc;
+}
+
+void IOFlashController_print(IOFlashController_client* iofc)
+{
+    fprintf(stderr, "NAND configuration: %uGiB (%d CEs of %d blocks of %d pages of %d bytes data, %d bytes spare\n",
+        (uint32_t) (iofc->total_size / (1024*1024*1024)),
+        iofc->num_ce,
+        iofc->ce_blocks,
+        iofc->block_pages,
+        iofc->page_bytes,
+        iofc->spare_bytes);
+}
+
+CFDictionaryRef nand_dump(IOFlashController_client* iofc, int fd)
+{
+    uint64_t totalSize = (uint64_t)iofc->block_pages * (uint64_t)iofc->ce_blocks * (uint64_t)iofc->num_ce * (uint64_t)iofc->dump_page_size;
     write(fd, &totalSize, sizeof(uint64_t));
     
-    dump_nand_to_socket(fd);
+    dump_nand_to_socket(iofc, fd);
     return NULL;
 }
 
-int dump_nand_to_socket(int fd)
+int dump_nand_to_socket(IOFlashController_client* iofc, int fd)
 {
-    int ceNum=0,pageNum,bankNum;
-    IOReturn r;
-    uint64_t totalPages = gPagesPerBlock * gBlocksPerCE * gCECount;
+    uint32_t is_boot_block, blockNum,  ceNum=0,pageNum=0,bankNum=0;
+    uint64_t totalPages = iofc->block_pages * iofc->ce_blocks * iofc->num_ce;
     uint64_t validPages = 0;
     uint64_t blankPages = 0;
     uint64_t errorPages = 0;
     uint64_t otherPages = 0;
     uint64_t counter = 0;
-    
+    IOReturn r;
+    IOFlashPartitionScheme* fps = NULL;
+    IOFlashControllerUserClient_OutputStruct *out;
+
+    if (iofc->boot_from_nand)
+    {
+        fps = find_boot_blocks(iofc);
+        assert(fps);
+    }
+
     //page data + spare metadata + kernel return values
-    uint8_t* pageBuffer = (uint8_t*) valloc(gDumpPageSize);
-    
+    uint8_t* pageBuffer = (uint8_t*) valloc(iofc->dump_page_size);
+
     if (pageBuffer == NULL)
     {
-        fprintf(stderr, "valloc(%d) FAIL", gDumpPageSize);
+        fprintf(stderr, "valloc(%d) FAIL", iofc->dump_page_size);
         return 0;
     }
-    struct kIOFlashControllerOut *out = (&pageBuffer[gBytesPerPage + metaPerLogicalPage]);
+    out = (IOFlashControllerUserClient_OutputStruct *) (&pageBuffer[iofc->page_bytes + iofc->meta_per_logical_page]);
 
     time_t start = time(NULL);
-    
-    for(bankNum=0; bankNum < banksPerCEphysical; bankNum++)
+
+    for(bankNum=0; bankNum < iofc->banksPerCEphysical; bankNum++)
     {
-    uint32_t start_page = bank_address_space * bankNum * gPagesPerBlock;
-    uint32_t end_page = start_page + gPagesPerBlock * blocks_per_bank;
+    uint32_t start_page = iofc->bank_address_space * bankNum * iofc->block_pages;
+    uint32_t end_page = start_page + iofc->block_pages * iofc->blocks_per_bank;
     for(pageNum=start_page; pageNum < end_page; pageNum++)
     {
-        for(ceNum=0; ceNum < gCECount; ceNum++)
+        for(ceNum=0; ceNum < iofc->num_ce; ceNum++)
         {
-            uint32_t blockNum = pageNum / gPagesPerBlock;
-            uint32_t boot = (blockNum < gFSStartBlock);
+            blockNum = iofc->bank_address_space * bankNum + (pageNum-start_page) / iofc->block_pages;
+            is_boot_block = fps && IOFlashPartitionScheme_is_bootloader_block(fps, ceNum, blockNum);
 
-            if(boot)
-                r = FSDReadBootPage(ceNum, pageNum, pageBuffer, out);
+            if(is_boot_block)
+            {
+                r = FSDReadBootPage(iofc, ceNum, pageNum, pageBuffer, out);
+                printf("Boot block read ce %d page %x\n", ceNum, pageNum);
+            }
             else
-                r = FSDReadPageWithOptions(ceNum, pageNum, pageBuffer, &pageBuffer[gBytesPerPage], metaPerLogicalPage, 0, out);
-                //r = FSDReadPageWithOptions(ceNum, pageNum, pageBuffer,NULL, 0, 0x100, out);
-    
+            {
+                r = FSDReadPageWithOptions(iofc, ceNum, pageNum, pageBuffer, &pageBuffer[iofc->page_bytes], iofc->meta_per_logical_page, 0, out);
+            }
             if(r == 0)
             {
                 validPages++;
@@ -457,7 +465,7 @@ int dump_nand_to_socket(int fd)
                 }
                 else if (r == kIOReturnUnformattedMedia)
                 {
-                    memset(pageBuffer, 0xFF, gBytesPerPage + metaPerLogicalPage);
+                    memset(pageBuffer, 0xFF, iofc->page_bytes + iofc->meta_per_logical_page);
                     blankPages++;
                 }
                 else if (r == 0xdeadbeef)
@@ -476,23 +484,22 @@ int dump_nand_to_socket(int fd)
                     otherPages++;
                 }
             }
-            out->ret2 = 0;
         
-            if(write(fd, pageBuffer, gDumpPageSize) != gDumpPageSize)
+            if(write(fd, pageBuffer, iofc->dump_page_size) != iofc->dump_page_size)
             {
-                pageNum = gPagesPerBlock * gBlocksPerCE;
+                pageNum = iofc->block_pages * iofc->ce_blocks;
                 fprintf(stderr, "Abort dump\n");
                 break;
             }
-            if (ceNum == 0 && pageNum % gPagesPerBlock == 0)
+            if (ceNum == 0 && pageNum % iofc->block_pages == 0)
             {
-                fprintf(stderr, "Block %d/%d (%d%%)\n", (counter/gPagesPerBlock), gBlocksPerCE, (counter*100)/(gPagesPerBlock*gBlocksPerCE));
+                //fprintf(stderr, "Block %d/%d (%d%%)\n", (counter/block_pages), ce_blocks, (counter*100)/(block_pages*ce_blocks));
             }
         }
         counter++;
     }
     }
-    if (ceNum == gCECount && pageNum == (gPagesPerBlock * gBlocksPerCE))
+    if (ceNum == iofc->num_ce && (pageNum == (iofc->block_pages * iofc->ce_blocks)))
     {
         time_t duration = time(NULL) - start;
         fprintf(stderr, "Finished NAND dump in %lu hours %lu minutes %lu seconds\n", duration / 3600, (duration % 3600) / 60, (duration % 3600) % 60);
@@ -506,50 +513,55 @@ int dump_nand_to_socket(int fd)
     return 0;
 }
 
-int nand_proxy(int fd)
+int nand_proxy(IOFlashController_client* iofc, int fd)
 {
-    struct kIOFlashControllerOut out;
+    IOFlashControllerUserClient_OutputStruct out;
     proxy_read_cmd cmd;
-    
-    uint8_t* pageBuffer = (uint8_t*) valloc(gBytesPerPage);
+    uint32_t z, spareSize = 0;
+    uint8_t* spareBuf = NULL;
+    uint8_t* spareBuf2;
+
+    uint8_t* pageBuffer = (uint8_t*) valloc(iofc->page_bytes);
     if( pageBuffer == NULL)
     {
-        fprintf(stderr, "pageBuffer = valloc(%d) failed\n", gBytesPerPage);
+        fprintf(stderr, "pageBuffer = valloc(%d) failed\n", iofc->page_bytes);
         return 0;
     }
 
     while(1)
     {
-        int z = read(fd, &cmd, sizeof(proxy_read_cmd));
+        z = read(fd, &cmd, sizeof(proxy_read_cmd));
         if (z != sizeof(proxy_read_cmd))
             break;
 
-        void* spareBuf = NULL;
-        
-        uint32_t blockNum = cmd.page / gPagesPerBlock;
-        uint32_t boot = (blockNum < gFSStartBlock);
-        if(boot)
+        if (cmd.spareSize > spareSize)
         {
-            cmd.spareSize = 0;
-            cmd.options |= kIOFlashStorageOptionBootPageIO;
-        }
-        else if (cmd.spareSize)
-        {
+            if (spareBuf != NULL)
+            {
+                free(spareBuf);
+            }
             spareBuf = valloc(cmd.spareSize);
+            if (spareBuf == NULL)
+            {
+                fprintf(stderr, "spareBuf = valloc(%d) failed\n", cmd.spareSize);
+                break;
+            }
+            spareSize = cmd.spareSize;
         }
-        FSDReadPageWithOptions(cmd.ce, cmd.page, pageBuffer, spareBuf, cmd.spareSize, cmd.options, &out);
+        spareBuf2 = (cmd.spareSize > 0) ? spareBuf : NULL;
+        //fprintf(stderr, "read %d %d %d %x\n", cmd.ce, cmd.page, cmd.spareSize, spareBuf2);
+        FSDReadPageWithOptions(iofc, cmd.ce, cmd.page, pageBuffer, spareBuf2, cmd.spareSize, cmd.options, &out);
         
-        write(fd, pageBuffer, gBytesPerPage);
-        if (spareBuf != NULL)
+        write(fd, pageBuffer, iofc->page_bytes);
+        if (spareBuf2 != NULL)
         {
-            write(fd, spareBuf, cmd.spareSize);
+            write(fd, spareBuf2, cmd.spareSize);
         }
-        write(fd, &out, sizeof(struct kIOFlashControllerOut));
-        
-        if (spareBuf != NULL)
-        {
-            free(spareBuf);
-        }
+        write(fd, &out, sizeof(IOFlashControllerUserClient_OutputStruct));
+    }
+    if (spareBuf != NULL)
+    {
+        free(spareBuf);
     }
     free(pageBuffer);
     return 0;

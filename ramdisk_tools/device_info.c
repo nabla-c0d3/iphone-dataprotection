@@ -31,7 +31,7 @@ CFMutableDictionaryRef device_info(int socket, CFDictionaryRef request)
     
     get_device_infos(out);
     
-    CFMutableDictionaryRef nand = FSDGetInfo(0);
+    CFMutableDictionaryRef nand = FSDGetInfo();
     if (nand != NULL)
         CFDictionaryAddValue(out, CFSTR("nand"), nand);
 

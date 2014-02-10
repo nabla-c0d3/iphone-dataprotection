@@ -19,19 +19,19 @@ $(SDK):
 IOKit:
 	ln -s /System/Library/Frameworks/IOKit.framework/Versions/Current/Headers IOKit
 
-device_infos: device_infos.c device_info.c IOAESAccelerator.c AppleEffaceableStorage.c AppleKeyStore.c bsdcrypto/pbkdf2.c bsdcrypto/sha1.c bsdcrypto/key_wrap.c bsdcrypto/rijndael.c util.c IOKit.c registry.c ioflash/ioflash.c kernel_patcher.c
+device_infos: device_infos.c device_info.c IOAESAccelerator.c AppleEffaceableStorage.c AppleKeyStore.c bsdcrypto/pbkdf2.c bsdcrypto/sha1.c bsdcrypto/key_wrap.c bsdcrypto/rijndael.c util.c IOKit.c registry.c ioflash/ioflash.c ioflash/IOFlashPartitionScheme.c kernel_patcher.c
 	$(CC) $(CFLAGS) -o $@ $^
 	$(CODESIGN) $@
 
-restored_external: restored_external.c device_info.c remote_functions.c plist_server.c AppleKeyStore.c AppleEffaceableStorage.c IOKit.c IOAESAccelerator.c util.c registry.c AppleKeyStore_kdf.c bsdcrypto/pbkdf2.c bsdcrypto/sha1.c bsdcrypto/rijndael.c bsdcrypto/key_wrap.c ioflash/ioflash.c kernel_patcher.c
+restored_external: restored_external.c device_info.c remote_functions.c plist_server.c AppleKeyStore.c AppleEffaceableStorage.c IOKit.c IOAESAccelerator.c util.c registry.c AppleKeyStore_kdf.c bsdcrypto/pbkdf2.c bsdcrypto/sha1.c bsdcrypto/rijndael.c bsdcrypto/key_wrap.c ioflash/ioflash.c ioflash/IOFlashPartitionScheme.c kernel_patcher.c
 	$(CC) $(CFLAGS) -o $@ $^
 	$(CODESIGN) $@
 
-bruteforce: systemkb_bruteforce.c AppleKeyStore.c AppleEffaceableStorage.c IOKit.c IOAESAccelerator.c util.c registry.c AppleKeyStore_kdf.c bsdcrypto/pbkdf2.c bsdcrypto/sha1.c bsdcrypto/rijndael.c bsdcrypto/key_wrap.c device_info.c ioflash/ioflash.c kernel_patcher.c
+bruteforce: systemkb_bruteforce.c AppleKeyStore.c AppleEffaceableStorage.c IOKit.c IOAESAccelerator.c util.c registry.c AppleKeyStore_kdf.c bsdcrypto/pbkdf2.c bsdcrypto/sha1.c bsdcrypto/rijndael.c bsdcrypto/key_wrap.c device_info.c ioflash/ioflash.c ioflash/IOFlashPartitionScheme.c kernel_patcher.c
 	$(CC) $(CFLAGS) -o $@ $^
 	$(CODESIGN) $@
 
-ioflashstoragekit: ioflash/ioflash.c ioflash/ioflash_kernel.c ioflash/ioflashstoragekit.c util.c
+ioflashstoragekit: ioflash/ioflash.c ioflash/ioflash_kernel.c ioflash/ioflashstoragekit.c ioflash/IOFlashPartitionScheme.c util.c
 	$(CC) $(CFLAGS) -o $@ $^
 	$(CODESIGN) $@
 
