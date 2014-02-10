@@ -43,7 +43,7 @@ io_connect_t IOAESAccelerator_getIOconnect()
 }
 
 
-int doAES(void* inbuf, void *outbuf, uint32_t size, uint32_t keyMask, void* key, void* iv, int mode, int bits) {
+int doAES(void* cleartext, void *ciphertext, uint32_t size, uint32_t keyMask, void* key, void* iv, int mode, int bits) {
     IOReturn ret;
     IOAESStruct in;
 
@@ -51,8 +51,8 @@ int doAES(void* inbuf, void *outbuf, uint32_t size, uint32_t keyMask, void* key,
 
     in.mode = mode;
     in.bits = bits;
-    in.inbuf = inbuf;
-    in.outbuf = outbuf;
+    in.cleartext = cleartext;
+    in.ciphertext = ciphertext;
     in.size = size;
     in.mask = keyMask;
 
@@ -86,22 +86,23 @@ IOReturn doAES_wrapper(void* thisxxx, int mode, void* iv, void* outbuf, void *in
 
 int patch_IOAESAccelerator();
 
-int AES_UID_Encrypt(void* input2, void* output, size_t len)
+int AES_UID_Encrypt(void* cleartext, void* ciphertext, size_t len)
 {
     IOAESStruct in;
     IOReturn ret;
     static int triedToPatchKernelAlready = 0;
-    unsigned char* input = valloc(16);
-    
-    memcpy(input, input2, 16);
+
+    //prevent weird bug on old armv6 devices where cleartext and ciphertext are the same buffer
+    unsigned char* cleartextCopy = valloc(16);
+    memcpy(cleartextCopy, cleartext, 16);
 
     pthread_once(&once_control, aes_init);
 
     in.mode = kIOAESAcceleratorEncrypt;
     in.mask = kIOAESAcceleratorUIDMask;
     in.bits = 128;
-    in.inbuf = input;
-    in.outbuf = output;
+    in.cleartext = cleartextCopy;
+    in.ciphertext = ciphertext;
     in.size = len;
     
     memset(in.keybuf, 0, sizeof(in.keybuf));
@@ -117,7 +118,7 @@ int AES_UID_Encrypt(void* input2, void* output, size_t len)
         triedToPatchKernelAlready = 1;
         fprintf(stderr, "Trying to patch IOAESAccelerator kernel extension to allow UID key usage\n");
         patch_IOAESAccelerator();
-        ret = AES_UID_Encrypt(input2, output, len);
+        ret = AES_UID_Encrypt(cleartext, ciphertext, len);
     }
     if(ret != kIOReturnSuccess) {
         fprintf(stderr, "IOAESAccelerator returned: %x\n", ret);

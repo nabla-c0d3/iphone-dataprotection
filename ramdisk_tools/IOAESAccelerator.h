@@ -11,15 +11,15 @@
 
 typedef struct 
 {
-	void*		inbuf;
-	void*		outbuf;
+	void*		cleartext;
+	void*		ciphertext;
 	uint32_t	size;
 	uint8_t		iv[16];
 	uint32_t	mode;
 	uint32_t	bits;
 	uint8_t		keybuf[32];
 	uint32_t	mask;
-	uint32_t	zero; //ios 4.2.1
+	uint32_t	length_of_uidplus_params; //ios 4.2.1
 } IOAESStruct;
 
 #define IOAESStruct_size41    (sizeof(IOAESStruct))
@@ -27,8 +27,8 @@ typedef struct
 
 void aes_init();
 io_connect_t IOAESAccelerator_getIOconnect();
-int doAES(void* inbuf, void *outbuf, uint32_t size, uint32_t keyMask, void* key, void* iv, int mode, int bits);
-int AES_UID_Encrypt(void* input, void* output, size_t len);
+int doAES(void* cleartext, void *ciphertext, uint32_t size, uint32_t keyMask, void* key, void* iv, int mode, int bits);
+int AES_UID_Encrypt(void* cleartext, void* ciphertext, size_t len);
 
 uint8_t* IOAES_key835();
 uint8_t* IOAES_key89A();
