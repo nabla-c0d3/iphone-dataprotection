@@ -23,7 +23,9 @@ int send_progress_message(int socket, int progress, int total)
     CFRelease(number);
     CFRelease(number2);
     int res = send_object(socket, msg);
-    CFRelease(msg);
+    if (msg != NULL) {
+        CFRelease(msg);
+    }
     return res;
 }
 
@@ -35,7 +37,8 @@ int send_object(int socket, CFTypeRef obj)
     if(obj == NULL)
         return res;
     
-    CFDataRef outdata = CFPropertyListCreateData(kCFAllocatorDefault, obj, kCFPropertyListXMLFormat_v1_0, 0, NULL);
+    //CFDataRef outdata = CFPropertyListCreateData(kCFAllocatorDefault, obj, kCFPropertyListXMLFormat_v1_0, 0, NULL);
+    CFDataRef outdata = CFPropertyListCreateXMLData(kCFAllocatorDefault, obj);
     if (outdata != NULL)
     {
         len = CFDataGetLength(outdata);
@@ -86,8 +89,8 @@ int handle_client(int socket, CFDictionaryRef handlers)
             continue;
         }
 
-        plist = (CFDictionaryRef) CFPropertyListCreateWithData (kCFAllocatorDefault, data, kCFPropertyListImmutable, NULL, NULL);
-
+//        plist = (CFDictionaryRef) CFPropertyListCreateWithData (kCFAllocatorDefault, data, kCFPropertyListImmutable, NULL, NULL);
+        plist = (CFDictionaryRef) CFPropertyListCreateFromXMLData (kCFAllocatorDefault, data, kCFPropertyListImmutable, NULL);
         if(plist == NULL || CFGetTypeID(plist) != CFDictionaryGetTypeID())
         {
             CFRelease(data);
