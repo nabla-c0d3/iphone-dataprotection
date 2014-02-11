@@ -5,4 +5,5 @@ syntax: glob
 *.pyc
 *.dmg
 *.ipsw
-
+redsn0w_mac_*
+redsn0w_win_*
