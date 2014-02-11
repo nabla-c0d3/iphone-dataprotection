@@ -85,6 +85,10 @@ class ExaminerShell(Cmd):
         self.complete_plist = self._complete
         self.complete_xxd = self._complete
         self.image = image
+        if image.ppn:
+            self.savepath = "."
+            print "PPN device, use nand_dump + info, other commands will fail"
+            return
         self.system = image.getPartitionVolume(0)
         self.data = image.getPartitionVolume(1)
         self.volume = None

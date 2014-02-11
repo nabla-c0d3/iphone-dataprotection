@@ -45,7 +45,7 @@ def getEMFkeyFromCRPT(data, key89B):
 class NAND(object):
     H2FMI_HASH_TABLE = gen_h2fmi_hash_table()
     
-    def __init__(self, filename, device_infos, ppn=False):
+    def __init__(self, filename, device_infos):
         self.device_infos = device_infos
         self.partition_table = None
         self.lockers = {}
@@ -67,34 +67,9 @@ class NAND(object):
         self.nandonly = (page0 != None) and page0.startswith("ndrG")
         if self.nandonly:
             self.encrypted = True
-        
-        magics = ["DEVICEINFOBBT"]
-        nandsig = None
-        if page0 and page0[8:14] == "Darwin":
-            print "Found old style signature", page0[:8]
-            nandsig = page0
-        else:
-            magics.append("NANDDRIVERSIGN")
 
-        #sp0 = {}
-        sp0 = self.readSpecialPages(0, magics)
-        print "Found %s special pages in CE 0" % (", ".join(sp0.keys()))
         if not self.nandonly:
             print "Device does not boot from NAND (=> has a NOR)"
-        
-        vfltype = '1'   #use VSVFL by default
-        if not nandsig:    
-            nandsig = sp0.get("NANDDRIVERSIGN")
-        if not nandsig:
-            print "NANDDRIVERSIGN not found, assuming metadata withening = %d" % self.metadata_whitening
-        else:
-            nSig, flags = struct.unpack("<LL", nandsig[:8])
-            #assert nandsig[3] == chr(0x43)
-            vfltype = nandsig[1]
-            self.metadata_whitening = (flags & 0x10000) != 0
-            print "NAND signature 0x%x flags 0x%x withening=%d, epoch=%s" % (nSig, flags, self.metadata_whitening, nandsig[0])
-               
-        if not self.nandonly:
             if self.device_infos.has_key("lockers"):
                 self.lockers = EffaceableLockers(self.device_infos.lockers.data)
         else:
@@ -109,18 +84,45 @@ class NAND(object):
                     self.device_infos.EMF = EMF.encode("hex")
                     self.device_infos.DKey = dkey.encode("hex")
 
-            deviceuniqueinfo = sp0.get("DEVICEUNIQUEINFO")
-            if not deviceuniqueinfo:
-                print "DEVICEUNIQUEINFO not found"
-            else:
-                scfg = parse_SCFG(deviceuniqueinfo)
-                print "Found DEVICEUNIQUEINFO, serial number=%s" % scfg.get("SrNm","SrNm not found !")
+        if self.ppn:
+            return
+
+        magics = ["DEVICEINFOBBT"]
+        nandsig = None
+        if page0 and page0[8:14] == "Darwin":
+            print "Found old style signature", page0[:8]
+            nandsig = page0
+        else:
+            magics.append("NANDDRIVERSIGN")
+
+        sp0 = {}
+        sp0 = self.readSpecialPages(0, magics)
+        print "Found %s special pages in CE 0" % (", ".join(sp0.keys()))
         
+        deviceuniqueinfo = sp0.get("DEVICEUNIQUEINFO")
+        if not deviceuniqueinfo:
+            print "DEVICEUNIQUEINFO not found"
+        else:
+            scfg = parse_SCFG(deviceuniqueinfo)
+            print "Found DEVICEUNIQUEINFO, serial number=%s" % scfg.get("SrNm","SrNm not found !")
+
+        vfltype = '1'   #use VSVFL by default
+        if not nandsig:
+            nandsig = sp0.get("NANDDRIVERSIGN")
+        if not nandsig:
+            print "NANDDRIVERSIGN not found, assuming metadata withening = %d" % self.metadata_whitening
+        else:
+            nSig, flags = struct.unpack("<LL", nandsig[:8])
+            #assert nandsig[3] == chr(0x43)
+            vfltype = nandsig[1]
+            self.metadata_whitening = (flags & 0x10000) != 0
+            print "NAND signature 0x%x flags 0x%x withening=%d, epoch=%s" % (nSig, flags, self.metadata_whitening, nandsig[0])
+
         if vfltype == '0':
             print "Using legacy VFL"
             self.vfl = VFL(self)
             self.ftl = FTL(self, self.vfl)
-        elif not ppn:
+        else:
             print "Using VSVFL"
             self.vfl = VSVFL(self)
             self.ftl = YAFTL(self.vfl)
@@ -135,9 +137,11 @@ class NAND(object):
         nand_size = d["#ce"] * d["#ce-blocks"] * d["#block-pages"] * d["#page-bytes"]
         hsize = sizeof_fmt(nand_size)
         self.bfn = d.get("boot-from-nand", False)
+        self.ppn = d.get("ppn-device", False)
         self.dumpedPageSize = dumpedPageSize
         self.pageSize = d["#page-bytes"]
         self.bootloaderBytes = d.get("#bootloader-bytes", 1536)
+        self.logical_page_size = d.get("logical-page-size", self.pageSize)
         self.emptyBootloaderPage = "\xFF" * self.bootloaderBytes
         self.blankPage = "\xFF" * self.pageSize
         self.nCEs =d["#ce"]

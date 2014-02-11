@@ -21,7 +21,10 @@ class FileBlockDevice(object):
         self.nBlocks = self.size / bs
         
     def readBlock(self, blockNum):
-        os.lseek(self.fd, self.offset + self.blockSize * blockNum, os.SEEK_SET)
+        off = self.offset + self.blockSize * blockNum
+        if off > self.size:
+            raise Exception("fail to seek at %d" % off)
+        os.lseek(self.fd, off, os.SEEK_SET)
         return os.read(self.fd, self.blockSize)
 
     def write(self, offset, data):

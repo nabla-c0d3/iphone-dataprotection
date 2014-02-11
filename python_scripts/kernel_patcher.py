@@ -59,6 +59,8 @@ patchs_ios6 = {
 
     #prevent panic with nand-disable-driver bootarg (was kprintf in ios5)
     "panic(AppleNANDFTL did not appear)" : (h("05 46 4D B9 58 48 78 44 0A F0 28 FE"), h("05 46 4D B9 58 48 78 44 00 20 00 20")),
+    #nop _fmiPatchMetaFringe to get full spare metadata on PPN devices (70 47 => bx lr)
+    "AppleIOPFMI::_fmiPatchMetaFringe": (h("F0 B5 03 AF 81 B0 1C 46  15 46 0E 46 B5 42"), h("70 47 03 AF 81 B0 1C 46  15 46 0E 46 B5 42"))
 }
 
 #https://github.com/comex/datautils0/blob/master/make_kernel_patchfile.c
@@ -72,7 +74,9 @@ patchs_ios5 = {
     "getxattr system": ("com.apple.system.\x00", "com.apple.aaaaaa.\x00"),
     "IOAES gid": (h("40 46 D4 F8 54 43 A0 47"), h("40 46 D4 F8 43 A0 00 20")),
     #HAX to fit into the 40 char boot-args (redsn0w 0.9.10)
-    "nand-disable-driver": ("nand-disable-driver\x00", "nand-disable\x00\x00\x00\x00\x00\x00\x00\x00")
+    "nand-disable-driver": ("nand-disable-driver\x00", "nand-disable\x00\x00\x00\x00\x00\x00\x00\x00"),
+    #nop _fmiPatchMetaFringe to get full spare metadata on PPN devices (70 47 => bx lr)
+    "AppleIOPFMI::_fmiPatchMetaFringe": (h("F0 B5 03 AF 81 B0 1C 46  15 46 0E 46 B5 42"), h("70 47 03 AF 81 B0 1C 46  15 46 0E 46 B5 42"))
 }
 
 patchs_ios4 = {
@@ -132,6 +136,7 @@ def decryptImg3(blob, key, iv):
             data = blob[i+12:i+size]
             break
         i += size
+    if key == "": return data[:real_size]
     return AES.new(key, AES.MODE_CBC, iv).decrypt(data)[:real_size]
 
 
