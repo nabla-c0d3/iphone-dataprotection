@@ -176,8 +176,8 @@ void check_special_pages(IOFlashController_client* iofc)
     
     if(iofc->ppn_device)
     {
-        fprintf(stderr, "PPN device, skipping check_special_pages\n");
-        set_physical_banks(iofc, 1);
+        set_physical_banks(iofc, iofc->caus_ce);
+        fprintf(stderr, "PPN device, caus-ce=%d bank_address_space=0x%x\n", iofc->caus_ce, iofc->bank_address_space);
         return;
     }
 
@@ -356,6 +356,7 @@ IOFlashController_client* IOFlashController_init()
     FSDGetPropertyForKey(fsd, CFSTR("cau-bits"), &iofc->cau_bits, sizeof(iofc->cau_bits), NULL);
     FSDGetPropertyForKey(fsd, CFSTR("page-bits"), &iofc->page_bits, sizeof(iofc->page_bits), NULL);
     FSDGetPropertyForKey(fsd, CFSTR("block-bits"), &iofc->block_bits, sizeof(iofc->block_bits), NULL);
+    FSDGetPropertyForKey(fsd, CFSTR("caus-ce"), &iofc->caus_ce, sizeof(iofc->caus_ce), NULL);
 
     if (iofc->meta_per_logical_page == 0)
     {

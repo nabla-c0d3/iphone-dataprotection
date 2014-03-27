@@ -33,6 +33,7 @@ typedef struct IOFlashController_client
     uint32_t    cau_bits;
     uint32_t    page_bits;
     uint32_t    block_bits;
+    uint32_t    caus_ce;
 } IOFlashController_client;
 
 //userclient options
