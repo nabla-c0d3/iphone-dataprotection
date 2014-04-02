@@ -2,6 +2,7 @@ from Crypto.Cipher import AES
 from hashlib import sha1
 from struct import unpack
 import os
+import re
 
 MBDB_SIGNATURE = 'mbdb\x05\x00'
 
@@ -141,6 +142,7 @@ class MBDB(object):
             return
 
         # write output file
+        out_file = re.sub(r'[:|*<>?"]', "_", out_file)
         output_path = os.path.join(output_path, record.domain, out_file)
         print("Writing %s" % output_path)
         f2 = file(output_path, 'wb')

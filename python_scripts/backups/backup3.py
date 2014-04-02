@@ -7,6 +7,7 @@ import struct
 import glob
 import sys
 import os
+import re
 
 """
 decrypt iOS 3 backup blob (metadata and file contents)
@@ -62,6 +63,6 @@ def decrypt_backup3(backupfolder, outputfolder, passphrase):
         if mdinfo["IsEncrypted"]:
             filedata = decrypt_blob(filedata, auth_key)
         
-        filename = metadata["Path"]
+        filename = re.sub(r'[:|*<>?"]', "_", metadata["Path"])
         makedirs(outputfolder + "/" + os.path.dirname(filename))
         write_file(outputfolder + "/" + filename, filedata)
