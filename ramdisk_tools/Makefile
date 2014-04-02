@@ -1,5 +1,5 @@
-SDKVER?=5.1
-ARCH?=armv6
+SDKVER?=7.0
+ARCH?=armv7
 MINIOS=4.0
 SDK=/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS$(SDKVER).sdk/
 HGVERSION:= $(shell hg parents --template '{node|short}' || echo "unknown")
@@ -36,6 +36,10 @@ ioflashstoragekit: ioflash/ioflash.c ioflash/ioflash_kernel.c ioflash/ioflashsto
 	$(CODESIGN) $@
 
 kernel_patcher: kernel_patcher.c
+	$(CC) $(CFLAGS) -o $@ $^
+	$(CODESIGN) $@
+
+ttbthingy: ttbthingy.c
 	$(CC) $(CFLAGS) -o $@ $^
 	$(CODESIGN) $@
 
