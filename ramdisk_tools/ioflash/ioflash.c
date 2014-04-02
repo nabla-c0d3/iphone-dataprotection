@@ -446,6 +446,7 @@ int dump_nand_to_socket(IOFlashController_client* iofc, int fd)
 
             if(is_boot_block)
             {
+                memset(pageBuffer, 0, iofc->dump_page_size);
                 r = FSDReadBootPage(iofc, ceNum, pageNum, pageBuffer, out);
                 printf("Boot block read ce %d page %x\n", ceNum, pageNum);
             }

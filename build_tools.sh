@@ -53,11 +53,6 @@ if [ ! -f "$SDKPATH/System/Library/Frameworks/IOKit.framework/IOKit" ]; then
     fi
 fi
 
-ARCH=armv6
-if [ "$SDKVER" == "7.0" ]; then
-    ARCH=armv7
-fi
-
 if     [ -f "$SDKPATH/System/Library/Frameworks/IOKit.framework/Headers/IOKitLib.h" ] \
     && [ -f "$SDKPATH/System/Library/Frameworks/IOKit.framework/IOKit" ]; then
     export SDKVER
