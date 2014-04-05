@@ -6,7 +6,7 @@ then
     exit
 fi
 
-for VER in 5.0 5.1 6.0 6.1 7.0
+for VER in 5.0 5.1 6.0 6.1 7.0 7.1
 do
     if [ -d "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS$VER.sdk/" ];
     then

@@ -68,10 +68,7 @@ hdiutil eject /Volumes/ramdisk
 
 echo "Rebuilding ramdisk_tools"
 
-./build_tools.sh
-
-#show armv6/armv7
-lipo -info ramdisk_tools/restored_external
+./build_tools.sh || exit -1
 
 #compiling in a vmware shared folder can produce binaries filled with zeroes !
 if [ ! -f ramdisk_tools/restored_external ] || [ "$(file -b ramdisk_tools/restored_external)" == "data" ]
@@ -79,6 +76,9 @@ then
     echo "ramdisk_tools/restored_external not found or invalid, check compilation output for errors"
     exit -1
 fi
+
+#show armv6/armv7
+lipo -info ramdisk_tools/restored_external
 
 if [ $# -eq 1 ]
 then
