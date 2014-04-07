@@ -37,7 +37,7 @@ def check_deps():
     redsn0w_folder = os.path.basename(REDSNOW_URL).replace(".zip","")
     if not os.path.exists(redsn0w_folder):
         if raw_input("%s folder missing, download ? [y/n] " % redsn0w_folder) == "y":
-            os.system("curl -O %s" % REDSNOW_URL)
+            os.system("curl -L -O %s" % REDSNOW_URL)
             os.system("unzip %s" % os.path.basename(REDSNOW_URL))
         else:
             return
@@ -53,6 +53,7 @@ def build(arg):
         ipsw = "data/ipsw/" + basename
         if not os.path.exists(ipsw):
             if raw_input("IPSW %s missing, download ? [y/n] " % ipsw) == "y":
+                url = IPSWs[arg]
                 print "Downloading %s" % url
                 os.system("cd data/ipsw && curl -O %s" % url)
             else:
