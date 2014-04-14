@@ -59,6 +59,9 @@ def build(arg):
             else:
                 print "Place %s in data/ispw/ and try again" % basename
                 return
+        if arg in ["ipt2", "iphone2g", "iphone3g"]:
+            print "Setting ARCH to armv6 for device %s" % arg
+            os.putenv("ARCH", "armv6")
     else:
         usage()
     

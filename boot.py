@@ -2,11 +2,6 @@
 
 import glob, os,sys
 
-if sys.platform == "darwin":
-    REDSNOW_PATH = "redsn0w_mac_0.9.15b3/redsn0w.app/Contents/MacOS/redsn0w"
-else:
-    REDSNOW_PATH = "redsn0w_win_0.9.15b3\\redsn0w.exe"
-
 #return list of (ipsw,kernel,ramdisk)
 def list_bootable():
     res = []
@@ -20,10 +15,6 @@ def list_bootable():
     return res
 
 def main():
-    if not os.path.exists(REDSNOW_PATH):
-        print "Extract %s in current directory" % REDSNOW_PATH.split(os.sep)[0]
-        return 
-
     l = list_bootable()
     
     if len(l) == 0:
@@ -43,6 +34,22 @@ def main():
                     ipsw, kernel, ramdisk = l[x-1]
                     break
             print "Invalid choice"
+
+    REDSN0W_VERSION = "0.9.15b3"
+    if ipsw.find("iPod2,1") != -1:
+        REDSN0W_VERSION = "0.9.14b2" #older version for ipt2
+        if sys.platform != "darwin":
+            print "redsn0w steaks4uce exploit for ipt2 seems broken on Windows, but it works on OSX"
+            return
+
+    if sys.platform == "darwin":
+        REDSNOW_PATH = "redsn0w_mac_%s/redsn0w.app/Contents/MacOS/redsn0w" % REDSN0W_VERSION
+    else:
+        REDSNOW_PATH = "redsn0w_win_%s\\redsn0w.exe" % REDSN0W_VERSION
+
+    if not os.path.exists(REDSNOW_PATH):
+        print "Extract %s in current directory" % REDSNOW_PATH.split(os.sep)[0]
+        return
 
     print "Using %s" % ipsw
     #cs_enforcement_disable=1

@@ -22,6 +22,11 @@ if [ "$SDKVER" == "" ]; then
     exit -1
 fi
 
+if [ "$ARCH" == "armv6" ] && [ `echo "$VER >= 7.0" | bc` == "1" ]; then
+    echo "Need iOS 6 SDK for armv6 target"
+    exit -1
+fi
+
 if [ ! -f "$SDKPATH/System/Library/Frameworks/IOKit.framework/Headers/IOKitLib.h" ]; then
     echo "IOKit headers missing"
 
@@ -57,6 +62,6 @@ if     [ -f "$SDKPATH/System/Library/Frameworks/IOKit.framework/Headers/IOKitLib
     && [ -f "$SDKPATH/System/Library/Frameworks/IOKit.framework/IOKit" ]; then
     export SDKVER
     export ARCH
-    #make -C ramdisk_tools clean
+    make -C ramdisk_tools clean
     make -C ramdisk_tools
 fi
