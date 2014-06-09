@@ -1,6 +1,7 @@
 #!/usr/bin/python
 from backups.backup3 import decrypt_backup3
 from backups.backup4 import MBDB
+from icloud.backup import download_backup
 from keystore.keybag import Keybag
 from util import readPlist, makedirs
 import os
@@ -73,7 +74,11 @@ def main():
     if len(sys.argv) >= 3:
         output_path = sys.argv[2]
 
-    extract_backup(backup_path, output_path)
+    if backup_path == "icloud":
+        print "Downloading iCloud backup"
+        download_backup(None, None, output_path)
+    else:
+        extract_backup(backup_path, output_path)
 
 if __name__ == "__main__":
     main()

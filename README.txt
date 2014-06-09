@@ -31,7 +31,7 @@ SSH access
 
 Python scripts
     Install dependencies
-       sudo easy_install M2crypto construct progressbar setuptools pyasn1
+       sudo easy_install M2crypto construct progressbar setuptools pyasn1 protobuf
        sudo ARCHFLAGS='-arch i386 -arch x86_64' easy_install pycrypto
     M2Crypto for OS X 10.9
         curl -O http://chandlerproject.org/pub/Projects/MeTooCrypto/M2Crypto-0.21.1-py2.7-macosx-10.9-intel.egg
