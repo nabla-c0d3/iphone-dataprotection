@@ -154,14 +154,14 @@ class Keybag(object):
                 self.wrap = data
             elif tag == "UUID":
                 if currentClassKey:
-                    self.classKeys[currentClassKey["CLAS"]] = currentClassKey
+                    self.classKeys[currentClassKey["CLAS"] & 0xF] = currentClassKey
                 currentClassKey = {"UUID": data}
             elif tag in CLASSKEY_TAGS:
                 currentClassKey[tag] = data
             else:
                 self.attrs[tag] = data
         if currentClassKey:
-            self.classKeys[currentClassKey["CLAS"]] = currentClassKey
+            self.classKeys[currentClassKey["CLAS"] & 0xF] = currentClassKey
 
     def getPasscodekeyFromPasscode(self, passcode):
         if self.type == BACKUP_KEYBAG or self.type == OTA_KEYBAG:
@@ -250,7 +250,7 @@ class Keybag(object):
         print "-"*128
         for k, ck in self.classKeys.items():
             if k == 6: print ""
-            print "".join([PROTECTION_CLASSES.get(k).ljust(53),
+            print "".join([PROTECTION_CLASSES.get(k, "%d" % k).ljust(53),
                                           str(ck.get("WRAP","")).ljust(5),
                                           KEY_TYPES[ck.get("KTYP",0)].ljust(11),
                                           ck.get("KEY", "").encode("hex").ljust(65),
@@ -261,5 +261,5 @@ class Keybag(object):
         if self.unlocked:
             d = {}
             for ck in self.classKeys.values():
-                d["%d" % ck["CLAS"]] = ck.get("KEY","").encode("hex")
+                d["%d" % (ck["CLAS"] & 0xF)] = ck.get("KEY","").encode("hex")
             return d
