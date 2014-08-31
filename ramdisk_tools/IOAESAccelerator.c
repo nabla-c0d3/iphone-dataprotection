@@ -7,11 +7,11 @@ https://github.com/planetbeing/xpwn/blob/master/crypto/aes.c
 #include <string.h>
 #include <IOKit/IOKitLib.h>
 #include <pthread.h>
-#include "IOAESAccelerator.h"
 #include "IOKit.h"
+#include "IOAESAccelerator.h"
 
 io_connect_t conn = 0;
-IOByteCount IOAESStructSize = sizeof(IOAESStruct);
+size_t IOAESStructSize = sizeof(IOAESStruct) - sizeof(IOAES_UIDPlus_Params);
 pthread_once_t once_control = PTHREAD_ONCE_INIT;
 
 //see com.apple.driver.AppleCDMA
@@ -55,6 +55,7 @@ int doAES(void* cleartext, void *ciphertext, uint32_t size, uint32_t keyMask, vo
     in.ciphertext = ciphertext;
     in.size = size;
     in.mask = keyMask;
+    in.length_of_uidplus_params = 0;
 
     memset(in.keybuf, 0, sizeof(in.keybuf));
 
@@ -117,7 +118,7 @@ int AES_UID_Encrypt(void* cleartext, void* ciphertext, size_t len)
     if(ret == kIOReturnNotPrivileged && !triedToPatchKernelAlready) {
         triedToPatchKernelAlready = 1;
         fprintf(stderr, "Trying to patch IOAESAccelerator kernel extension to allow UID key usage\n");
-        patch_IOAESAccelerator();
+        //patch_IOAESAccelerator();
         ret = AES_UID_Encrypt(cleartext, ciphertext, len);
     }
     if(ret != kIOReturnSuccess) {

@@ -300,6 +300,9 @@ KeyBag* AppleKeyStore_parseBinaryKeyBag(CFDataRef kb)
         if (p->tag == 'SREV') {
             keybag->version = CFSwapInt32BigToHost(p->data.intvalue);
         }
+        else if (p->tag == 'EPYT') {
+            keybag->type = CFSwapInt32BigToHost(p->data.intvalue);
+        }
         else if (p->tag == 'TLAS') {
             memcpy(keybag->salt, p->data.bytes, 20);
         }

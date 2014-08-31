@@ -1,4 +1,4 @@
-#include <IOKit/IOKitLib.h>
+#include "IOKit.h"
 
 /*
  AppleKeyStore

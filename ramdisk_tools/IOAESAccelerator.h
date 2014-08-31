@@ -7,7 +7,16 @@
 
 #define kIOAESAcceleratorGIDMask 0x3E8
 #define kIOAESAcceleratorUIDMask 0x7D0
+#define kIOAESAcceleratorUIDPlusMask 0x7D1
 #define kIOAESAcceleratorCustomMask 0
+
+typedef struct//sizeof=0x2C
+{
+	uint32_t    data_length;
+	char        data[0x20];
+	uint32_t    one;//=1
+	uint32_t    zzz;
+} IOAES_UIDPlus_Params;
 
 typedef struct 
 {
@@ -20,6 +29,7 @@ typedef struct
 	uint8_t		keybuf[32];
 	uint32_t	mask;
 	uint32_t	length_of_uidplus_params; //ios 4.2.1
+	IOAES_UIDPlus_Params uidplus_params;
 } IOAESStruct;
 
 #define IOAESStruct_size41    (sizeof(IOAESStruct))
