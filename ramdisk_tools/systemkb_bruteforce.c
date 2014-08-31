@@ -169,7 +169,6 @@ int main(int argc, char* argv[])
     }
     
     CFDataRef kbkeys = CFDictionaryGetValue(kbdict, CFSTR("KeyBagKeys")); 
-    CFRetain(kbkeys);
     
     if (kbkeys == NULL)
     {
@@ -187,13 +186,35 @@ int main(int argc, char* argv[])
     //save all we have for now
     saveKeybagInfos(kbkeys, kb, key835, NULL, NULL, NULL);
     
-    //now try to unlock the keybag
-    
-    if (bruteforceMethod == 1)
-        passcode = bruteforceUserland(kb, key835);
+    CFDataRef opaque = CFDictionaryGetValue(kbdict, CFSTR("OpaqueStuff"));
+    int keyboardType = 0;
+    if (opaque != NULL)
+    {
+        CFPropertyListRef opq = CFPropertyListCreateWithData(kCFAllocatorDefault, opaque, kCFPropertyListImmutable, NULL, NULL);
+        if (opq != NULL && CFGetTypeID(opq) == CFDictionaryGetTypeID())
+        {
+            CFNumberRef kt = CFDictionaryGetValue(opq, CFSTR("keyboardType"));
+            CFNumberGetValue(kt, kCFNumberSInt32Type, &keyboardType);
+            CFRelease(opq);
+        }
+    }
+    printf("keyboardType=%d\n", keyboardType);
+    if(keyboardType != 0)
+    {
+        printf("Enter passcode: \n");
+        passcode = malloc(100);
+        fgets(passcode, 99, stdin);
+        passcode[strlen(passcode)-1] = 0;
+    }
     else
-        passcode = bruteforceWithAppleKeyStore(kbkeys);
-    
+    {
+        //now try to unlock the keybag
+
+        if (bruteforceMethod == 1)
+            passcode = bruteforceUserland(kb, key835);
+        else
+            passcode = bruteforceWithAppleKeyStore(kbkeys);
+    }
     if (passcode != NULL)
     {
         if (!strcmp(passcode, ""))
@@ -201,30 +222,35 @@ int main(int argc, char* argv[])
         else
             printf("Found passcode : %s\n", passcode);
         
-        AppleKeyStore_unlockKeybagFromUserland(kb, passcode, 4, key835);
-        AppleKeyStore_printKeyBag(kb);
-        
-        CFMutableDictionaryRef classKeys = AppleKeyStore_getClassKeys(kb);
-        
-        AppleKeyStore_getPasscodeKey(kb, passcode, strlen(passcode), passcodeKey);
-        
-        printf("Passcode key : ");
-        printBytesToHex(passcodeKey, 32);
-        printf("\n");
-        
-        printf("Key 0x835 : ");
-        printBytesToHex(key835, 16);
-        printf("\n");
-        
-        //save all we have for now
-        saveKeybagInfos(kbkeys, kb, key835, passcode, passcodeKey, classKeys);
-        CFRelease(classKeys);
+        if(!AppleKeyStore_unlockKeybagFromUserland(kb, passcode, strlen(passcode), key835))
+        {
+            printf("Invalid passcode !\n");
+        }
+        else
+        {
+            AppleKeyStore_printKeyBag(kb);
+
+            CFMutableDictionaryRef classKeys = AppleKeyStore_getClassKeys(kb);
+
+            AppleKeyStore_getPasscodeKey(kb, passcode, strlen(passcode), passcodeKey);
+
+            printf("Passcode key : ");
+            printBytesToHex(passcodeKey, 32);
+            printf("\n");
+
+            printf("Key 0x835 : ");
+            printBytesToHex(key835, 16);
+            printf("\n");
+
+            //save all we have for now
+            saveKeybagInfos(kbkeys, kb, key835, passcode, passcodeKey, classKeys);
+            CFRelease(classKeys);
+        }
 
         free(passcode);
     }
     free(kb);
 
-    CFRelease(kbkeys);
     CFRelease(kbdict);
 
     return 0;
