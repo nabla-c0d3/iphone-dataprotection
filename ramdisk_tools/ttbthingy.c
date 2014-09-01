@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include "ioflash/externalMethod.h"
 
 /*
  * ARM page bits for L1 sections.
@@ -65,7 +66,7 @@
 #define S5L8930_PHYS_OFF    0x40000000
 #define S5L8940_PHYS_OFF    0x80000000        /* Note: RAM base is identical for 8940-8955. */
 
-#define PHYS_OFF            S5L8940_PHYS_OFF
+//#define PHYS_OFF            S5L8930_PHYS_OFF
 
 /*
  * Shadowmap begin and end. 15MB of shadowmap is enough for the kernel.
@@ -98,7 +99,7 @@
 static mach_port_t kernel_task = 0;
 static uint32_t ttb_template[TTB_SIZE] = {};
 static void* ttb_template_ptr = &ttb_template[0];
-static uint32_t kernel_base = DEFAULT_KERNEL_SLIDE;
+static vm_address_t kernel_base = DEFAULT_KERNEL_SLIDE;
 
 typedef struct pmap_partial_t {
     uint32_t tte_virt;
@@ -215,13 +216,6 @@ static int insn_ldr_literal_imm(uint16_t* i)
 }
 
 // TODO: More encodings
-static int insn_is_ldr_imm(uint16_t* i)
-{
-    uint8_t opA = bit_range(*i, 15, 12);
-    uint8_t opB = bit_range(*i, 11, 9);
-
-    return opA == 6 && (opB & 4) == 4;
-}
 
 static int insn_ldr_imm_rt(uint16_t* i)
 {
@@ -236,47 +230,6 @@ static int insn_ldr_imm_rn(uint16_t* i)
 static int insn_ldr_imm_imm(uint16_t* i)
 {
     return ((*i >> 6) & 0x1F);
-}
-
-// TODO: More encodings
-static int insn_is_ldrb_imm(uint16_t* i)
-{
-    return (*i & 0xF800) == 0x7800;
-}
-
-static int insn_ldrb_imm_rt(uint16_t* i)
-{
-    return (*i & 7);
-}
-
-static int insn_ldrb_imm_rn(uint16_t* i)
-{
-    return ((*i >> 3) & 7);
-}
-
-static int insn_ldrb_imm_imm(uint16_t* i)
-{
-    return ((*i >> 6) & 0x1F);
-}
-
-static int insn_is_ldr_reg(uint16_t* i)
-{
-    if((*i & 0xFE00) == 0x5800)
-        return 1;
-    else if((*i & 0xFFF0) == 0xF850 && (*(i + 1) & 0x0FC0) == 0x0000)
-        return 1;
-    else
-        return 0;
-}
-
-static int insn_ldr_reg_rn(uint16_t* i)
-{
-    if((*i & 0xFE00) == 0x5800)
-        return (*i >> 3) & 0x7;
-    else if((*i & 0xFFF0) == 0xF850 && (*(i + 1) & 0x0FC0) == 0x0000)
-        return (*i & 0xF);
-    else
-        return 0;
 }
 
 int insn_ldr_reg_rt(uint16_t* i)
@@ -299,15 +252,6 @@ int insn_ldr_reg_rm(uint16_t* i)
         return 0;
 }
 
-static int insn_ldr_reg_lsl(uint16_t* i)
-{
-    if((*i & 0xFE00) == 0x5800)
-        return 0;
-    else if((*i & 0xFFF0) == 0xF850 && (*(i + 1) & 0x0FC0) == 0x0000)
-        return (*(i + 1) >> 4) & 0x3;
-    else
-        return 0;
-}
 
 static int insn_is_add_reg(uint16_t* i)
 {
@@ -404,169 +348,6 @@ static int insn_mov_imm_imm(uint16_t* i)
         return thumb_expand_imm_c(((*i & 0x0400) << 1) | ((*(i + 1) & 0x7000) >> 4) | (*(i + 1) & 0xFF));
     else if((*i & 0xFBF0) == 0xF240 && (*(i + 1) & 0x8000) == 0)
         return ((*i & 0xF) << 12) | ((*i & 0x0400) << 1) | ((*(i + 1) & 0x7000) >> 4) | (*(i + 1) & 0xFF);
-    else
-        return 0;
-}
-
-static int insn_is_cmp_imm(uint16_t* i)
-{
-    if((*i & 0xF800) == 0x2800)
-        return 1;
-    else if((*i & 0xFBF0) == 0xF1B0 && (*(i + 1) & 0x8F00) == 0x0F00)
-        return 1;
-    else
-        return 0;
-}
-
-static int insn_cmp_imm_rn(uint16_t* i)
-{
-    if((*i & 0xF800) == 0x2800)
-        return (*i >> 8) & 7;
-    else if((*i & 0xFBF0) == 0xF1B0 && (*(i + 1) & 0x8F00) == 0x0F00)
-        return *i & 0xF;
-    else
-        return 0;
-}
-
-static int insn_cmp_imm_imm(uint16_t* i)
-{
-    if((*i & 0xF800) == 0x2800)
-        return *i & 0xFF;
-    else if((*i & 0xFBF0) == 0xF1B0 && (*(i + 1) & 0x8F00) == 0x0F00)
-        return thumb_expand_imm_c(((*i & 0x0400) << 1) | ((*(i + 1) & 0x7000) >> 4) | (*(i + 1) & 0xFF));
-    else
-        return 0;
-}
-
-static int insn_is_and_imm(uint16_t* i)
-{
-    return (*i & 0xFBE0) == 0xF000 && (*(i + 1) & 0x8000) == 0;
-}
-
-static int insn_and_imm_rn(uint16_t* i)
-{
-    return *i & 0xF;
-}
-
-static int insn_and_imm_rd(uint16_t* i)
-{
-    return (*(i + 1) >> 8) & 0xF;
-}
-
-static int insn_and_imm_imm(uint16_t* i)
-{
-    return thumb_expand_imm_c(((*i & 0x0400) << 1) | ((*(i + 1) & 0x7000) >> 4) | (*(i + 1) & 0xFF));
-}
-
-static int insn_is_push(uint16_t* i)
-{
-    if((*i & 0xFE00) == 0xB400)
-        return 1;
-    else if(*i == 0xE92D)
-        return 1;
-    else if(*i == 0xF84D && (*(i + 1) & 0x0FFF) == 0x0D04)
-        return 1;
-    else
-        return 0;
-}
-
-static int insn_push_registers(uint16_t* i)
-{
-    if((*i & 0xFE00) == 0xB400)
-        return (*i & 0x00FF) | ((*i & 0x0100) << 6);
-    else if(*i == 0xE92D)
-        return *(i + 1);
-    else if(*i == 0xF84D && (*(i + 1) & 0x0FFF) == 0x0D04)
-        return 1 << ((*(i + 1) >> 12) & 0xF);
-    else
-        return 0;
-}
-
-static int insn_is_preamble_push(uint16_t* i)
-{
-    return insn_is_push(i) && (insn_push_registers(i) & (1 << 14)) != 0;
-}
-
-static int insn_is_str_imm(uint16_t* i)
-{
-    if((*i & 0xF800) == 0x6000)
-        return 1;
-    else if((*i & 0xF800) == 0x9000)
-        return 1;
-    else if((*i & 0xFFF0) == 0xF8C0)
-        return 1;
-    else if((*i & 0xFFF0) == 0xF840 && (*(i + 1) & 0x0800) == 0x0800)
-        return 1;
-    else
-        return 0;
-}
-
-static int insn_str_imm_postindexed(uint16_t* i)
-{
-    if((*i & 0xF800) == 0x6000)
-        return 1;
-    else if((*i & 0xF800) == 0x9000)
-        return 1;
-    else if((*i & 0xFFF0) == 0xF8C0)
-        return 1;
-    else if((*i & 0xFFF0) == 0xF840 && (*(i + 1) & 0x0800) == 0x0800)
-        return (*(i + 1) >> 10) & 1;
-    else
-        return 0;
-}
-
-static int insn_str_imm_wback(uint16_t* i)
-{
-    if((*i & 0xF800) == 0x6000)
-        return 0;
-    else if((*i & 0xF800) == 0x9000)
-        return 0;
-    else if((*i & 0xFFF0) == 0xF8C0)
-        return 0;
-    else if((*i & 0xFFF0) == 0xF840 && (*(i + 1) & 0x0800) == 0x0800)
-        return (*(i + 1) >> 8) & 1;
-    else
-        return 0;
-}
-
-static int insn_str_imm_imm(uint16_t* i)
-{
-    if((*i & 0xF800) == 0x6000)
-        return (*i & 0x07C0) >> 4;
-    else if((*i & 0xF800) == 0x9000)
-        return (*i & 0xFF) << 2;
-    else if((*i & 0xFFF0) == 0xF8C0)
-        return (*(i + 1) & 0xFFF);
-    else if((*i & 0xFFF0) == 0xF840 && (*(i + 1) & 0x0800) == 0x0800)
-        return (*(i + 1) & 0xFF);
-    else
-        return 0;
-}
-
-static int insn_str_imm_rt(uint16_t* i)
-{
-    if((*i & 0xF800) == 0x6000)
-        return (*i & 7);
-    else if((*i & 0xF800) == 0x9000)
-        return (*i >> 8) & 7;
-    else if((*i & 0xFFF0) == 0xF8C0)
-        return (*(i + 1) >> 12) & 0xF;
-    else if((*i & 0xFFF0) == 0xF840 && (*(i + 1) & 0x0800) == 0x0800)
-        return (*(i + 1) >> 12) & 0xF;
-    else
-        return 0;
-}
-
-static int insn_str_imm_rn(uint16_t* i)
-{
-    if((*i & 0xF800) == 0x6000)
-        return (*i >> 3) & 7;
-    else if((*i & 0xF800) == 0x9000)
-        return 13;
-    else if((*i & 0xFFF0) == 0xF8C0)
-        return (*i & 0xF);
-    else if((*i & 0xFFF0) == 0xF840 && (*(i + 1) & 0x0800) == 0x0800)
-        return (*i & 0xF);
     else
         return 0;
 }
@@ -779,17 +560,44 @@ uint32_t find_pmap_location(uint32_t region, uint8_t* kdata, size_t ksize)
 
 /* --- planetbeing patchfinder --- */
 
-static uint32_t get_kernel_base(void)
+//from https://github.com/saelo/ios-kern-utils/blob/master/lib/kernel/base.c
+vm_address_t get_kernel_base()
 {
-    /* You really thought you'd get a free KASLR leak from this thing? */
-    return DEFAULT_KERNEL_SLIDE;
+    kern_return_t ret;
+    task_t kernel_task;
+    vm_region_submap_info_data_64_t info;
+    vm_size_t size;
+    mach_msg_type_number_t info_count = VM_REGION_SUBMAP_INFO_COUNT_64;
+    unsigned int depth = 0;
+    vm_address_t addr = 0x81200000;
+    //arm64
+    //addr = 0xffffff8000000000;
+
+    ret = task_for_pid(mach_task_self(), 0, &kernel_task);
+    if (ret != KERN_SUCCESS)
+    {
+        printf("task_for_pid(0) returned=%x\n", ret);
+        return -1;
+    }
+
+    while (1) {
+        ret = vm_region_recurse_64(kernel_task, &addr, &size, &depth, (vm_region_info_t) & info, &info_count);
+        //printf("addr=0x%llx\n", addr);
+        if (ret != KERN_SUCCESS)
+            break;
+        if (size > 1024 * 1024 * 1024)
+            return addr;
+        addr += size;
+    }
+
+    return -1;
 }
 
-static void generate_ttb_entries(void)
+static void generate_ttb_entries(uint32_t ram_base)
 {
     uint32_t vaddr, vaddr_end, paddr, i;
 
-    paddr = PHYS_OFF;
+    paddr = ram_base;
     vaddr = SHADOWMAP_BEGIN;
     vaddr_end = SHADOWMAP_END;
 
@@ -807,20 +615,22 @@ static void generate_ttb_entries(void)
 }
 
 #define DMPSIZE            0xF00000
+void do_kernel_patchs();
 
 int main(int argc, char* argv[])
 {
     uint32_t chunksize = 2048;
 
-    /* generate TTEs. */
-    generate_ttb_entries();
-
+    printf("calling get_kernel_base\n");
     /* get kernel base. */
     kernel_base = get_kernel_base();
     if(kernel_base == -1) {
-        printf("failed to get kernel_baseel base...\n");
+        printf("failed to get kernel base...\n");
         return -1;
     }
+    kernel_base += 0x1000;
+
+    printf("kernel_base=%p\n", (void*) kernel_base);
 
     /* we can now find the kernel pmap. */
     kern_return_t r = task_for_pid(mach_task_self(), 0, &kernel_task);
@@ -830,15 +640,33 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    /* kill */
-    uint32_t addr = kernel_base + 0x1000, e = 0, sz = 0;
-    uint8_t* p = malloc(DMPSIZE + 0x1000);
+    //hax, sometimes on iOS7 kernel starts at +0x200000 in the 1Gb region
     pointer_t buf;
+    mach_msg_type_number_t sz = 0x500;
 
+    kernel_base += 0x200000;
+    vm_read(kernel_task, kernel_base, chunksize, &buf, &sz);
+    printf("@ %p => %x\n", (void*) kernel_base, *((uint32_t*)buf));
+    if(*((uint32_t*)buf) != 0xfeedface)
+    {
+        kernel_base -= 0x200000;
+        vm_read(kernel_task, kernel_base, chunksize, &buf, &sz);
+        printf("@ %p => %x\n", (void*) kernel_base, *((uint32_t*)buf));
+        if(*((uint32_t*)buf) != 0xfeedface)
+        {
+            printf("Failed to find feedface at kernelbase +0/0x200000\n");
+            return 0;
+        }
+    }
+
+    /* kill */
+    vm_address_t addr = kernel_base + 0x1000, e = 0;
+    uint8_t* p = malloc(DMPSIZE + 0x1000);
     if(!p) {
         printf("failed to malloc memory for kernel dump...\n");
         return -1;
     }
+
     while(addr < (kernel_base + DMPSIZE))
     {
         vm_read(kernel_task, addr, chunksize, &buf, &sz);
@@ -849,6 +677,12 @@ int main(int argc, char* argv[])
         bcopy(z, p + e, chunksize);
         e += chunksize;
     }
+    /*printf("writing kernel to kdump.bin\n");
+    FILE *fp = fopen("kdump.bin", "wb");
+    fwrite((void*)p, DMPSIZE, 1, fp);
+    fclose(fp);
+    return 0;*/
+
 
     /* kernel dumped, now find pmap. */
     uint32_t kernel_pmap = kernel_base + 0x1000 + find_pmap_location(kernel_base, (uint8_t*)p, DMPSIZE);
@@ -856,7 +690,13 @@ int main(int argc, char* argv[])
 
     /* Read for kernel_pmap, dereference it for pmap_store. */
     vm_read(kernel_task, kernel_pmap, 2048, &buf, &sz);
-    vm_read(kernel_task, *(uint32_t*)(buf), 2048, &buf, &sz);
+    vm_address_t pmap_store = *(vm_address_t*)(buf);
+    printf("pmap_store= %p\n", (void*) pmap_store);
+    if(!pmap_store)
+    {
+        return 0;
+    }
+    vm_read(kernel_task, pmap_store, 2048, &buf, &sz);
 
     /* 
      * We now have the struct. Let's copy it out to get the TTE base (we don't really need to do this
@@ -868,6 +708,11 @@ int main(int argc, char* argv[])
 
     printf("kernel pmap tte base is at VA 0x%08x PA 0x%08x\n", tte_virt, tte_phys);
 
+    uint32_t ram_base = tte_phys & 0xF0000000;//hax
+    printf("ram base 0x%08x\n", ram_base);
+    /* generate TTEs. */
+    generate_ttb_entries(ram_base);
+
     /* Now, we can start reading at the TTE base and start writing in the descriptors. */
     uint32_t tte_off = SHADOWMAP_BEGIN_OFF;
     vm_read(kernel_task, tte_virt + tte_off, 2048, &buf, &sz);
@@ -875,11 +720,66 @@ int main(int argc, char* argv[])
     vm_write(kernel_task, tte_virt + tte_off, buf, sz);
 
     /* Haxx done, write out the kernel. :) */
-    printf("done writing descriptors, dumping the kernel via shadow mapping now\n");
+    //printf("done writing descriptors, dumping the kernel via shadow mapping now\n");
 
-    FILE *fp = fopen("kdump.bin", "wb");
-    fwrite((void*)SHADOWMAP_BEGIN, SHADOWMAP_SIZE_BYTES, 1, fp);
-    fclose(fp);
+    //sleep(2);//hax, need to flush caches ?
+    do_kernel_patchs();
 
     return 0;
+}
+
+void do_kernel_patchs()
+{
+/**
+com.apple.iokit.IOCryptoAcceleratorFamily:__text:8094BD48 B0 F5 FA 6F                 CMPNE.W         R0, #0x7D0
+com.apple.iokit.IOCryptoAcceleratorFamily:__text:8094BD4C 00 F0 A2 80                 BEQ.W           loc_8094BE94
+=> B0 F5 FA 6F 00 F0 A2 80
+**/
+    uint8_t* ptr = (uint8_t*) SHADOWMAP_BEGIN;
+    uint8_t* iomem = 0x0, *addr=0;
+
+    while(ptr < ((uint8_t*)SHADOWMAP_END))
+    {
+        if(!memcmp(ptr, "\xB0\xF5\xFA\x6F\x00\xF0\xA2\x80", 8)//ios7
+         || !memcmp(ptr, "\xB0\xF5\xFA\x6F\x00\xF0\x92\x80", 8))//ios6
+        {
+            printf("Patching IOSAESAccelerator enable uid key !\n");
+            ptr += 4;
+            *((uint32_t*) ptr) = 0x460c460c;
+        }
+        //if(!memcmp(ptr, "\xF0\xB5\x03\xAF\x4D\xF8\x04\x8D\x8B\xB0\x15\x46\x40\xF2\xC2\x26", 16))
+        //IOFlashControllerUserClient::externalMethod
+        if(!memcmp(ptr, "\xF0\xB5\x03\xAF\x4D\xF8\x04\x8D\x8B\xB0\x15\x46", 12))
+        {
+            addr = (ptr - SHADOWMAP_BEGIN) + kernel_base  - 0x1000;
+            printf("Found ioFlash at %p\n", addr);
+            if(!iomem)
+            {
+                printf("But missing IOMemoryDescriptor::withAddress !\n");
+            }
+            else
+            {
+                iomem = (uint8_t*) -(addr + 2 + 0xC - (iomem + 1));
+                printf("delta = %p\n", iomem);
+                memcpy(ptr, externalMethod_bin, externalMethod_bin_len);
+                memcpy(ptr + externalMethod_bin_len, &iomem, 4);
+            }
+        }
+        if(!memcmp(ptr, "\xF0\xB5\x03\xAF\x2D\xE9\x00\x0D\x81\xB0\x06\x46\x64\x20\x9B\x46", 16))
+        {
+            if(iomem == 0)
+            {
+                iomem = (ptr - SHADOWMAP_BEGIN) + kernel_base - 0x1000;
+                printf("Found IOMemoryDescriptor::withAddress at %p\n", iomem);
+            }
+        }
+        //meta fringe
+        if(!memcmp(ptr, "\xF0\xB5\x03\xAF\x81\xB0\x1C\x46\x15\x46\x0E\x46\xB5\x42", 14))
+        {
+            printf("Found AppleIOPFMI::_fmiPatchMetaFringe\n");
+            *((uint32_t*) ptr) = 0x47704770;
+        }
+        ptr += 2;
+    }
+
 }
