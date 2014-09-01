@@ -105,7 +105,7 @@ uint32_t IOFlashPartitionScheme_get_flags_for_block(IOFlashPartitionScheme* fps,
     uint32_t i,idx;
     uint32_t original_block;
 
-    uint32_t vblock = block * fps->ceCount + ce;
+    //uint32_t vblock = block * fps->ceCount + ce;
     //check if bad boot block
     /*if (block < 16)
     {

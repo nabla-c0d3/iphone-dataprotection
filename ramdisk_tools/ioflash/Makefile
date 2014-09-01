@@ -4,6 +4,9 @@ SDK=/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Devel
 CC=clang -arch $(ARCH)
 CFLAGS=-Wall -isysroot $(SDK)
 
+externalMethod.h: externalMethod.bin
+	xxd -i $^ > $@
+
 #hexdump hax to get correct endianness
 externalMethod.bin: externalMethod.o
 	otool -tX $^ | xxd -r | hexdump -v -e '/4 "%08x"' | xxd -r -p > $@ 
