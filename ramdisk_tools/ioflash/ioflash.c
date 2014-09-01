@@ -74,14 +74,15 @@ IOReturn FSDReadPageWithOptions(IOFlashController_client* iofc,
     in.spare = spareBuffer;
     in.spareSize = spareSize;
 
-    IOConnectCallStructMethod(iofc->iofc_connect,
+    IOReturn ret = IOConnectCallStructMethod(iofc->iofc_connect,
                               kIOFlashControllerUserClientReadPage,
                               (const void*) &in,
                               sizeof(IOFlashControllerUserClient_InputStruct),
                               out,
                               &outLen);
-
-    return out->ret1;
+    if (!ret)
+        return out->ret1;
+    return ret;
 }
 
 IOReturn FSDReadBootPage(IOFlashController_client* iofc,
@@ -174,14 +175,28 @@ void check_special_pages(IOFlashController_client* iofc)
     uint32_t bank, block, page;
     uint8_t* pageBuffer;
     
+    pageBuffer = (uint8_t*) valloc(iofc->dump_page_size);
+    IOFlashControllerUserClient_OutputStruct *out = (IOFlashControllerUserClient_OutputStruct*) (&pageBuffer[iofc->page_bytes + iofc->meta_per_logical_page]);
+    
+    printf("Trying to read page 0\n");
+    IOReturn r = FSDReadBootPage(iofc, 0, 0, pageBuffer, out);
+    if(r)
+    {
+        printf("Failed to read page 0, error code 0x%08x, missing kernel patch ?\n", r);
+        free(pageBuffer);
+        exit(0);
+        return;
+    }
+    printf("First page magic: '%4s'\n", (char*) pageBuffer);
+
     if(iofc->ppn_device)
     {
         set_physical_banks(iofc, iofc->caus_ce);
         fprintf(stderr, "PPN device, caus-ce=%d bank_address_space=0x%x\n", iofc->caus_ce, iofc->bank_address_space);
+        free(pageBuffer);
         return;
     }
 
-    pageBuffer = (uint8_t*) valloc(iofc->dump_page_size);
 
     printf("Searching for special pages ...\n");
 
@@ -194,7 +209,6 @@ void check_special_pages(IOFlashController_client* iofc)
         {
             page = (iofc->bank_address_space * bank +  block) * iofc->block_pages;
 
-            IOFlashControllerUserClient_OutputStruct *out = (IOFlashControllerUserClient_OutputStruct*) (&pageBuffer[iofc->page_bytes + iofc->meta_per_logical_page]);
          
             for(i=0; i < iofc->block_pages; i++)
             {
@@ -264,6 +278,9 @@ CFMutableDictionaryRef FSDGetInfo()
 {
     CFMutableDictionaryRef      iofsd_properties;
     IOFlashController_client* iofc = IOFlashController_init();
+
+    if(!iofc)
+        return NULL;
     
     iofsd_properties = iofc->iofsd_properties;
 
@@ -404,7 +421,7 @@ CFDictionaryRef nand_dump(IOFlashController_client* iofc, int fd)
 
 int dump_nand_to_socket(IOFlashController_client* iofc, int fd)
 {
-    uint32_t is_boot_block, blockNum,  ceNum=0,pageNum=0,bankNum=0;
+    uint32_t part_flags, slc_bit, blockNum,  ceNum=0,pageNum=0,bankNum=0;
     uint64_t totalPages = iofc->block_pages * iofc->ce_blocks * iofc->num_ce;
     uint64_t validPages = 0;
     uint64_t blankPages = 0;
@@ -432,6 +449,7 @@ int dump_nand_to_socket(IOFlashController_client* iofc, int fd)
     out = (IOFlashControllerUserClient_OutputStruct *) (&pageBuffer[iofc->page_bytes + iofc->meta_per_logical_page]);
 
     time_t start = time(NULL);
+    part_flags = 0;
 
     for(bankNum=0; bankNum < iofc->banksPerCEphysical; bankNum++)
     {
@@ -442,17 +460,27 @@ int dump_nand_to_socket(IOFlashController_client* iofc, int fd)
         for(ceNum=0; ceNum < iofc->num_ce; ceNum++)
         {
             blockNum = iofc->bank_address_space * bankNum + (pageNum-start_page) / iofc->block_pages;
-            is_boot_block = fps && IOFlashPartitionScheme_is_bootloader_block(fps, ceNum, blockNum);
+            if (fps)
+                part_flags = IOFlashPartitionScheme_get_flags_for_block(fps, ceNum, blockNum);
 
-            if(is_boot_block)
+            slc_bit = (part_flags & kIOFlashPartitionSchemeUseSLCBlocks) ? (1 << (iofc->page_bits+iofc->block_bits+iofc->cau_bits)) : 0;
+
+            if(slc_bit && ((pageNum % iofc->block_pages) >= (iofc->slc_pages)))
+            {
+                //XXX: filling remaining pages of slc block with 0xAB marker for debug
+                memset(pageBuffer, 0xAB, iofc->page_bytes + iofc->meta_per_logical_page);
+                r = 0;
+                printf("SLC skip ce %d page %x\n", ceNum, pageNum);
+            }
+            else if(part_flags && !(part_flags & kIOFlashPartitionSchemeUseFullPages))
             {
                 memset(pageBuffer, 0, iofc->dump_page_size);
-                r = FSDReadBootPage(iofc, ceNum, pageNum, pageBuffer, out);
+                r = FSDReadBootPage(iofc, ceNum, pageNum | slc_bit, pageBuffer, out);
                 printf("Boot block read ce %d page %x\n", ceNum, pageNum);
             }
             else
             {
-                r = FSDReadPageWithOptions(iofc, ceNum, pageNum, pageBuffer, &pageBuffer[iofc->page_bytes], iofc->meta_per_logical_page, 0, out);
+                r = FSDReadPageWithOptions(iofc, ceNum, pageNum | slc_bit, pageBuffer, &pageBuffer[iofc->page_bytes], iofc->meta_per_logical_page, 0, out);
             }
             if(r == 0)
             {

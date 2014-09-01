@@ -70,6 +70,18 @@ IOFlashPartitionScheme* IOFlashPartitionScheme_init(IOFlashController_client* io
 
     memcpy((void*) &fps->ptable, (void*) p, sizeof(struct IOFlashPartitionTable));
 
+    uint32_t i, blk_offset;
+
+    for(i=0,blk_offset=0; i < 32; i++)
+    {
+        if( fps->ptable.partitions[i].flags & kIOFlashPartitionSchemePool)
+        {
+            fps->ptable.partitions[i].num_blocks = (fps->ptable.partitions[i].start_block * fps->ptable.partitions[i].num_blocks) / fps->ceCount;
+            fps->ptable.partitions[i].start_block = blk_offset;
+        }
+        blk_offset += fps->ptable.partitions[i].num_blocks;
+    }
+
     return fps;
 }
 
@@ -88,18 +100,18 @@ uint32_t get_partition_idx_for_block(IOFlashPartitionScheme* fps, uint32_t block
 }
 
 
-uint32_t IOFlashPartitionScheme_is_bootloader_block(IOFlashPartitionScheme* fps, uint32_t ce, uint32_t block)
+uint32_t IOFlashPartitionScheme_get_flags_for_block(IOFlashPartitionScheme* fps, uint32_t ce, uint32_t block)
 {
     uint32_t i,idx;
     uint32_t original_block;
 
     uint32_t vblock = block * fps->ceCount + ce;
     //check if bad boot block
-    if (block < 16)
+    /*if (block < 16)
     {
         uint8_t x = fps->ptable.cemetary.cemetary[vblock / 8];
         return (x & (1 << (vblock % 8))) == 0;
-    }
+    }*/
     uint32_t sp = (block & 0xFFFFFF) | (ce << 24);
     //check if spare
     //printf("sp=%x\n", sp);
@@ -115,15 +127,21 @@ uint32_t IOFlashPartitionScheme_is_bootloader_block(IOFlashPartitionScheme* fps,
                 if(idx != -1)
                 {
                     //printf("lol %x %d %x\n", original_block, idx, ptable.partitions[idx].flags);
-                    return (fps->ptable.partitions[idx].flags & kIOFlashPartitionSchemeUseFullPages) == 0;
+                    //return (fps->ptable.partitions[idx].flags & kIOFlashPartitionSchemeUseFullPages) == 0;
+                    return fps->ptable.partitions[idx].flags;
                 }
             }
         }
     }
+    if (block > 16)
+        return kIOFlashPartitionSchemeUseFullPages;
+    idx = get_partition_idx_for_block(fps, block);
+    if(idx != -1)
+        return fps->ptable.partitions[idx].flags;
     return 0;
 }
 
-uint32_t IOFlashPartitionScheme_remap_bootloader_block(IOFlashPartitionScheme* fps, uint32_t ce, uint32_t block, uint32_t* realCE, uint32_t* realBlock)
+uint32_t IOFlashPartitionScheme_remap_bootloader_block(IOFlashPartitionScheme* fps, uint32_t ce, uint32_t block, uint32_t flags, uint32_t* realCE, uint32_t* realBlock)
 {
     uint32_t i;
     uint32_t vblock = block * fps->ceCount + ce;
@@ -131,7 +149,7 @@ uint32_t IOFlashPartitionScheme_remap_bootloader_block(IOFlashPartitionScheme* f
 
     uint32_t bad = (x & (1 << (vblock % 8)));
 
-    if (!bad)
+    if (!bad && !(flags & kIOFlashPartitionSchemePool))
     {
         *realCE = ce;
         *realBlock = block;
@@ -232,7 +250,7 @@ uint32_t IOFlashPartitionScheme_read_partition(IOFlashPartitionScheme* fps, cons
 
     for(off=0, block=partition->start_block; block < (partition->start_block + partition->num_blocks); block++)
     {
-        IOFlashPartitionScheme_remap_bootloader_block(fps, ce, block, &remappedCE, &remappedBlock);
+        IOFlashPartitionScheme_remap_bootloader_block(fps, ce, block, partition->flags, &remappedCE, &remappedBlock);
 
         for(page=0; page < pagesPerBlock; page++)
         {

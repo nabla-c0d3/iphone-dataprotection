@@ -90,7 +90,7 @@ int myIOFlashStorage_externalMethod(uint32_t* this, uint32_t selector, IOExterna
         command.spareVA = NULL;
     }
 
-    out->ret1 = CALL_VTABLE(iofc, 0x344, 0, &command);
+    out->ret1 = CALL_VTABLE(iofc, 0x344, 0, &command);//0x344 => valid offset for ios 5 and below
 
     CALL_VTABLE(bufferDesc, 0x14); //IOGeneralMemoryDescriptor_release
 
@@ -153,7 +153,7 @@ int IOFlashStorage_kernel_patch()
     }
     if (CFStringCompare(version, CFSTR("5.1.1"), 0) > 0)
     {
-        fprintf(stderr, "Run-time kernel patching only supported on iOS 5\n");
+        fprintf(stderr, "Run-time kernel patching only supported on iOS 5, use ttbthingy for ios 6/7\n");
         return 1;
     }
     fprintf(stderr, "Trying to patch IOFlashControlerUserClient::externalMethod\n");

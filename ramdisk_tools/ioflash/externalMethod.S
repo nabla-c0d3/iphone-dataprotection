@@ -4,7 +4,7 @@
 //modified from clang -Os output
 
 externalMethod:
-    push	{r4, r5, r6, r7, lr}
+    push	{r4, r5, r6, r7, r8, r9, r10, r11, lr}
     sub	sp, #88
     
     ldr r11, IOMemoryDescriptor__withAddress_delta
@@ -77,7 +77,8 @@ docommand:
     ldr	r0, [r4, #120]
     add	r2, sp, #8
     ldr	r1, [r0, #0]
-    ldr.w	r3, [r1, #836]
+    //ldr.w	r3, [r1, #836] //XXX: ios5
+    ldr.w	r3, [r1, #844] //XXX: ios6/7 ?
     movs	r1, #0
     blx	r3
     str.w	r0, [r7]
@@ -94,7 +95,7 @@ docommand:
 epilog:
     movs	r0, #0
     add	sp, #88
-    pop	{r4, r5, r6, r7, pc}
+    pop	{r4, r5, r6, r7, r8, r9, r10, r11, pc}
 
 .align 2
 IOMemoryDescriptor__withAddress_delta:

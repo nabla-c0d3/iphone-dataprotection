@@ -1,4 +1,5 @@
-#include <IOKit/IOKitLib.h>
+//#include <IOKit/IOKitLib.h>
+#include "IOKit.h"
 
 typedef struct IOFlashController_client
 {

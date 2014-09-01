@@ -1,5 +1,6 @@
 #define CEMETARY_GATE   0xdeadcafe
 
+#define kIOFlashPartitionSchemePool           0x008
 #define kIOFlashPartitionSchemeUseSLCBlocks   0x100
 #define kIOFlashPartitionSchemeUseFullPages   0x200
 
@@ -81,6 +82,6 @@ typedef struct IOFlashPartitionScheme
 
 IOFlashPartitionScheme* IOFlashPartitionScheme_init(IOFlashController_client*, uint8_t*);
 
-uint32_t IOFlashPartitionScheme_is_bootloader_block(IOFlashPartitionScheme*, uint32_t ce, uint32_t block);
-uint32_t IOFlashPartitionScheme_remap_bootloader_block(IOFlashPartitionScheme*, uint32_t ce, uint32_t block, uint32_t* realCE, uint32_t* realBlock);
+uint32_t IOFlashPartitionScheme_get_flags_for_block(IOFlashPartitionScheme*, uint32_t ce, uint32_t block);
+uint32_t IOFlashPartitionScheme_remap_bootloader_block(IOFlashPartitionScheme*, uint32_t ce, uint32_t block, uint32_t flags, uint32_t* realCE, uint32_t* realBlock);
 uint32_t IOFlashPartitionScheme_read_partition(IOFlashPartitionScheme*, const char*, uint8_t**, uint32_t*);
