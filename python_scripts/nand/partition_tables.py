@@ -98,7 +98,11 @@ def parse_gpt(data):
         print "GPT crc check fail %d vs %d" % (actual, check)
         return None
     return gpt
-    
+
+def clz32(x):
+    if x == 0: return 32
+    return bin(x)[2:].rjust(32, "0").find("1")
+
 def parse_lwvm(data, pageSize):
     try:
         hdr = LWVM_header.parse(data)
@@ -111,19 +115,15 @@ def parse_lwvm(data, pageSize):
             return None
         print "LwVM header CRC OK"
         partitions = hdr.LWVM_partitionRecord[:hdr.numPartitions] 
-        deviceSize=0
-        #XXX: HAAAAAAAX
-        for s in [8, 16, 32, 64, 128]:
-            if hdr.mediaSize < (s* 1024*1024*1024):
-                deviceSize = s
-                break
+        LwVM_rangeShiftValue = 32 - clz32((hdr.mediaSize - 1)  >> 10 )
+
         for i in xrange(len(hdr.chunks)):
             if hdr.chunks[i] == 0x0:
-                lba0 = (i * deviceSize*1024*1024) / pageSize
+                lba0 = (i << LwVM_rangeShiftValue) / pageSize
                 partitions[0].first_lba = lba0
                 partitions[0].last_lba = lba0 + (partitions[0].end - partitions[0].begin) / pageSize
             elif hdr.chunks[i] == 0x1000:
-                lbad = (i * deviceSize*1024*1024) / pageSize
+                lbad = (i << LwVM_rangeShiftValue) / pageSize
                 partitions[1].first_lba = lbad
                 partitions[1].last_lba = lbad + (partitions[1].end - partitions[1].begin) / pageSize
         return partitions
