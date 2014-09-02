@@ -133,7 +133,7 @@ uint32_t IOFlashPartitionScheme_get_flags_for_block(IOFlashPartitionScheme* fps,
             }
         }
     }
-    if (block > 16)
+    if (block >= 16)//HAX
         return kIOFlashPartitionSchemeUseFullPages;
     idx = get_partition_idx_for_block(fps, block);
     if(idx != -1)

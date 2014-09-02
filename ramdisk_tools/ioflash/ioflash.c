@@ -538,6 +538,7 @@ int dump_nand_to_socket(IOFlashController_client* iofc, int fd)
         fprintf(stderr, "Blank pages %llu (%d%%)\n", blankPages, (int) (blankPages * 100 / totalPages));
         fprintf(stderr, "Error pages %llu (%d%%)\n", errorPages, (int) (errorPages * 100 / totalPages));
         fprintf(stderr, "Other pages %llu (%d%%)\n", otherPages, (int) (otherPages * 100 / totalPages));
+        fprintf(stderr, "(those stats are incorrect for ppn devices)\n");
     }
     free(pageBuffer);
     return 0;

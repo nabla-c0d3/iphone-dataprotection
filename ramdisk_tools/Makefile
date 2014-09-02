@@ -9,7 +9,7 @@ CFLAGS+= -framework CoreFoundation -framework IOKit -framework Security
 CFLAGS+= -miphoneos-version-min=$(MINIOS)
 CODESIGN=codesign -s - --entitlements entitlements.plist
 
-all: $(SDK) device_infos restored_external bruteforce ioflashstoragekit
+all: $(SDK) device_infos restored_external bruteforce ioflashstoragekit ttbthingy
 
 $(SDK):
 	@echo "iOS SDK not found in $(SDK)"

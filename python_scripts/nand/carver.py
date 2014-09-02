@@ -187,6 +187,9 @@ class NANDCarver(object):
         print "%d file IDs" % len(self.fileIds.keys())
 
     def carveDeletedFiles_fast(self, catalogLBAs=None, filter_=None):
+        if self.image.ppn:
+            print "Carving not supported for ppn devices"
+            return
         self.fastMode = True
         if not self.ftlhax:
             hax, userblocks = self.nand.ftl.YAFTL_lookup1()
