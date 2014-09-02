@@ -70,10 +70,10 @@ class NANDRemote(object):
         self.client = IOFlashStorageKitClient()
         self.client.send_command(CMD_PROXY)
     
-    def readPage(self, ce, page):
+    def readPage(self, ce, page, boot=False):
         options = 0
         spareSize = self.spareSize
-        if self.bootFromNand and page < 16*self.pagesPerBlock:#XXX hardcoded for now
+        if self.bootFromNand and boot:
             options = kIOFlashStorageOptionBootPageIO
             spareSize = 0
         d = struct.pack("<LLLL", ce, page, spareSize, options)

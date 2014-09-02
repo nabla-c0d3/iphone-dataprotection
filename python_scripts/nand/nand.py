@@ -5,10 +5,12 @@ from firmware.scfg import parse_SCFG
 from hfs.emf import EMFVolume
 from hfs.hfs import HFSVolume
 from image import NANDImageSplitCEs, NANDImageFlat
+from IOFlashPartitionScheme import IOFlashPartitionScheme
 from keystore.effaceable import check_effaceable_header, EffaceableLockers
 from legacyftl import FTL
 from partition_tables import GPT_partitions, parse_lwvm, parse_mbr, parse_gpt, \
     APPLE_ENCRYPTED
+from ppn import PPNFTL
 from progressbar import ProgressBar
 from remote import NANDRemote, IOFlashStorageKitClient
 from structs import *
@@ -48,7 +50,7 @@ class NAND(object):
     def __init__(self, filename, device_infos):
         self.device_infos = device_infos
         self.partition_table = None
-        self.lockers = {}
+        self.lockers = None
         self.iosVersion = 0
         self.hasMBR = False
         self.metadata_whitening = False
@@ -63,29 +65,11 @@ class NAND(object):
         else:
             self.image = NANDImageFlat(filename, device_infos["nand"])
         
-        s, page0 = self.readPage(0,0)
+        s, page0 = self.readPage(0,0, boot=True)
         self.nandonly = (page0 != None) and page0.startswith("ndrG")
         if self.nandonly:
             self.encrypted = True
-
-        if not self.nandonly:
-            print "Device does not boot from NAND (=> has a NOR)"
-            if self.device_infos.has_key("lockers"):
-                self.lockers = EffaceableLockers(self.device_infos.lockers.data)
-        else:
-            unit = self.findLockersUnit()
-            if unit:
-                self.lockers = EffaceableLockers(unit[0x40:])
-                self.lockers.display()
-                if not self.device_infos.has_key("lockers"):
-                    self.device_infos.lockers = plistlib.Data(unit[0x40:0x40+960])
-                    EMF = self.getEMF(device_infos["key89B"].decode("hex"))
-                    dkey = self.getDKey(device_infos["key835"].decode("hex"))
-                    self.device_infos.EMF = EMF.encode("hex")
-                    self.device_infos.DKey = dkey.encode("hex")
-
-        if self.ppn:
-            return
+            self.partition_scheme = IOFlashPartitionScheme(self, page0)
 
         magics = ["DEVICEINFOBBT"]
         nandsig = None
@@ -96,16 +80,11 @@ class NAND(object):
             magics.append("NANDDRIVERSIGN")
 
         sp0 = {}
-        sp0 = self.readSpecialPages(0, magics)
-        print "Found %s special pages in CE 0" % (", ".join(sp0.keys()))
+        #sp0 = self.readSpecialPages(0, magics)
+        #print "Found %s special pages in CE 0" % (", ".join(sp0.keys()))
+        if not self.nandonly:
+            print "Device does not boot from NAND (=> has a NOR)"
         
-        deviceuniqueinfo = sp0.get("DEVICEUNIQUEINFO")
-        if not deviceuniqueinfo:
-            print "DEVICEUNIQUEINFO not found"
-        else:
-            scfg = parse_SCFG(deviceuniqueinfo)
-            print "Found DEVICEUNIQUEINFO, serial number=%s" % scfg.get("SrNm","SrNm not found !")
-
         vfltype = '1'   #use VSVFL by default
         if not nandsig:
             nandsig = sp0.get("NANDDRIVERSIGN")
@@ -118,7 +97,33 @@ class NAND(object):
             self.metadata_whitening = (flags & 0x10000) != 0
             print "NAND signature 0x%x flags 0x%x withening=%d, epoch=%s" % (nSig, flags, self.metadata_whitening, nandsig[0])
 
-        if vfltype == '0':
+        if self.device_infos.has_key("lockers"):
+            self.lockers = EffaceableLockers(self.device_infos.lockers.data)
+        if self.nandonly:
+            unit = self.findLockersUnit()
+            if unit:
+                self.lockers = EffaceableLockers(unit[0x40:])
+                self.lockers.display()
+                self.device_infos.lockers = plistlib.Data(unit[0x40:0x40+960])
+                if not self.device_infos.has_key("lockers") or not self.device_infos.has_key("EMF") or self.device_infos.EMF == "00"*32:
+                    self.device_infos.lockers = plistlib.Data(unit[0x40:0x40+960])
+                    EMF = self.getEMF(device_infos["key89B"].decode("hex"))
+                    dkey = self.getDKey(device_infos["key835"].decode("hex"))
+                    self.device_infos.EMF = EMF.encode("hex")
+                    self.device_infos.DKey = dkey.encode("hex")
+
+            deviceuniqueinfo = sp0.get("DEVICEUNIQUEINFO")
+            if not deviceuniqueinfo:
+                print "DEVICEUNIQUEINFO not found"
+            else:
+                scfg = parse_SCFG(deviceuniqueinfo)
+                #print "Found DEVICEUNIQUEINFO, serial number=%s" % scfg.get("SrNm","SrNm not found !")
+
+        if self.ppn:
+            if filename != "remote":
+                print "Using PPN FTL"
+                self.ftl = PPNFTL(self)
+        elif vfltype == '0':
             print "Using legacy VFL"
             self.vfl = VFL(self)
             self.ftl = FTL(self, self.vfl)
@@ -141,7 +146,7 @@ class NAND(object):
         self.dumpedPageSize = dumpedPageSize
         self.pageSize = d["#page-bytes"]
         self.bootloaderBytes = d.get("#bootloader-bytes", 1536)
-        self.logical_page_size = d.get("logical-page-size", self.pageSize)
+        self.logicalPageSize = d.get("logical-page-size", self.pageSize)
         self.emptyBootloaderPage = "\xFF" * self.bootloaderBytes
         self.blankPage = "\xFF" * self.pageSize
         self.nCEs =d["#ce"]
@@ -151,10 +156,19 @@ class NAND(object):
         self.vendorType = d["vendor-type"]
         self.deviceReadId = d.get("device-readid", 0)
         self.banks_per_ce_vfl = d["banks-per-ce"]
+
+        if self.ppn:
+            self.slc_pages = d.get("slc-pages", 0)
+            self.block_bits =  d.get("block-bits", 0)
+            self.cau_bits = d.get("cau-bits", 0)
+            self.page_bits = d.get("page-bits", 0)
+
         if d.has_key("metadata-whitening"):
             self.metadata_whitening = (d["metadata-whitening"].data == "\x01\x00\x00\x00")
         if nand_chip_info.has_key(self.deviceReadId):
             self.banks_per_ce_physical = nand_chip_info.get(self.deviceReadId)[7]
+        elif self.ppn:
+            self.banks_per_ce_physical = struct.unpack("<L", d["caus-ce"].data)[0]
         else:
             #raise Exception("Unknown deviceReadId %x" % self.deviceReadId)
             print "!!! Unknown deviceReadId %x, assuming 1 physical bank /CE, will probably fail" % self.deviceReadId
@@ -181,7 +195,7 @@ class NAND(object):
         return struct.pack("<LLL", s[0], s[1],s[2])
     
     def readBootPage(self, ce, page):
-        s,d=self.readPage(ce, page)
+        s,d=self.readPage(ce, page, boot=True)
         if d:
             return d[:self.bootloaderBytes]
         else:
@@ -193,7 +207,9 @@ class NAND(object):
                 
     def readBlockPage(self, ce, block, page, key=None, lpn=None, spareType=SpareData):
         assert page < self.pagesPerBlock
-        pn = block * self.pagesPerBlock + page
+        b = block % self.blocks_per_bank
+        bank_offset = self.bank_address_space * (block / self.blocks_per_bank)
+        pn = (bank_offset + block % self.blocks_per_bank) * self.pagesPerBlock + page
         return self.readPage(ce, pn, key, lpn, spareType=spareType)
     
     def translateabsPage(self, page):
@@ -202,29 +218,36 @@ class NAND(object):
     def readAbsPage(self, page, key=None, lpn=None):
         return self.readPage(page % self.nCEs, page/self.nCEs, key, lpn)
     
-    def readPage(self, ce, page, key=None, lpn=None, spareType=SpareData):
+    def readPage(self, ce, page, key=None, lpn=None, spareType=SpareData, boot=False):
         if ce > self.nCEs or page > self.pagesPerCE:
             #hax physical banking
             pass#raise Exception("CE %d Page %d out of bounds" % (ce, page))
+        if self.ppn and self.filename != "remote":
+            #undo slc bit
+            zz = self.block_bits + self.cau_bits + self.page_bits
+            page = page & ((1 << zz) - 1)
         if self.filename != "remote": #undo banking hax
             bank = (page & ~((1 << self.bank_mask) - 1)) >> self.bank_mask
             page2 = (page & ((1 << self.bank_mask) - 1))
             page2 = bank * (self.blocks_per_bank) * self.pagesPerBlock + page2
-            spare, data = self.image.readPage(ce, page2)
+            spare, data = self.image.readPage(ce, page2, boot)
         else:
-            spare, data = self.image.readPage(ce, page)
+            spare, data = self.image.readPage(ce, page, boot)
         if not data:
             return None,None
         if self.metadata_whitening and spare != "\x00"*12 and len(spare) == 12:
             spare = self.unwhitenMetadata(spare, page)
-        spare = spareType.parse(spare)
+        if spareType:
+            spare = spareType.parse(spare)
         if key and self.encrypted:
-            if lpn != None: pageNum = spare.lpn #XXX
+            if lpn != None: pageNum = lpn#spare.lpn #XXX
             else:           pageNum = page
             return spare, self.decryptPage(data, key, pageNum)
         return spare, data
 
     def decryptPage(self, data, key, pageNum):
+        if key == FILESYSTEM_KEY and self.ppn:
+            return data
         return AESdecryptCBC(data, key, ivForPage(pageNum))
     
     def unpackSpecialPage(self, data):
@@ -244,7 +267,7 @@ class NAND(object):
                 break
             #hax for physical banking
             bank_offset = self.bank_address_space * (block / self.blocks_per_bank)
-            for page in xrange(self.pagesPerBlock,-1,-1):
+            for page in xrange(self.pagesPerBlock-1,-1,-1):
                 page = (bank_offset + block % self.blocks_per_bank) * self.pagesPerBlock + page
                 s, data = self.readPage(ce, page)
                 if data == None:
@@ -284,8 +307,9 @@ class NAND(object):
         if self.partition_table:
             return self.partition_table
         pt = None
+        key = FILESYSTEM_KEY if not self.ppn else None
         for i in xrange(10):
-            d = self.readLPN(i, FILESYSTEM_KEY)
+            d = self.readLPN(i, key)
             pt = parse_mbr(d)
             if pt:
                 self.hasMBR = True
@@ -294,11 +318,11 @@ class NAND(object):
             gpt = parse_gpt(d)
             if gpt:
                 off = gpt.partition_entries_lba - gpt.current_lba
-                d = self.readLPN(i+off, FILESYSTEM_KEY)
+                d = self.readLPN(i+off, key)
                 pt = GPT_partitions.parse(d)[:-1]
                 self.iosVersion = 4
                 break
-            pt = parse_lwvm(d, self.pageSize)
+            pt = parse_lwvm(d, self.logicalPageSize)
             if pt:
                 self.iosVersion = 5
                 break
@@ -312,7 +336,7 @@ class NAND(object):
             key = getEMFkeyFromCRPT(data, self.device_infos["key89B"].decode("hex"))
         if key == None:
             if partNum == 0:
-                key = FILESYSTEM_KEY
+                key = FILESYSTEM_KEY if not self.ppn else None
             elif partNum == 1 and self.device_infos.has_key("EMF"):
                 key = self.device_infos["EMF"].decode("hex")
         return FTLBlockDevice(self, pt[partNum].first_lba, pt[partNum].last_lba, key)
@@ -328,12 +352,15 @@ class NAND(object):
     def findLockersUnit(self):
         if not self.nandonly:
             return
-        for i in xrange(96,128):
-            for ce in xrange(self.nCEs):
-                s, d = self.readBlockPage(ce, 1, i)
-                if d and check_effaceable_header(d):
-                    print "Found effaceable lockers in ce %d block 1 page %d" % (ce,i)
-                    return d    
+        for ce in xrange(0,self.nCEs):
+            for block in xrange(4):#XXX: hax
+                plog = self.partition_scheme.readPartitionBlock("plog", ce, block)
+                for i in xrange(128):
+                    d = plog[i*self.bootloaderBytes:(i+1)*self.bootloaderBytes]
+
+                    if d and check_effaceable_header(d):
+                        print "Found effaceable lockers in ce %d block %d (XXX possibly remapped) page %d" % (ce,block,i)
+                        return d
    
     def getLockers(self):
         unit = self.findLockersUnit()
@@ -356,12 +383,12 @@ class NAND(object):
         if not self.nandonly:
             print "IMG3s are in NOR"
             return []
-        blob = self.readBootPartition(8, 16)
+        blob = self.partition_scheme.readPartition("firm")
         hdr = IMG2.parse(blob[:0x100])
         i = hdr.images_block * hdr.block_size + hdr.images_offset
         img3s = extract_img3s(blob[i:i+hdr.images_length*hdr.block_size])
         
-        boot = self.readBootPartition(0, 1)
+        boot = self.partition_scheme.readPartition("boot")
         img3s = extract_img3s(boot[0xc00:]) + img3s
         return img3s
         
@@ -369,15 +396,18 @@ class NAND(object):
         if not self.nandonly:
             print "IMG3s are in NOR"
             return
-        if outfolder == None:
+        if outfolder:
             if self.filename != "remote": outfolder = os.path.join(os.path.dirname(self.filename), "img3")
             else: outfolder = os.path.join(".", "img3")
-        makedirs(outfolder)
-        print "Extracting IMG3s to %s" % outfolder
+        if outfolder:
+            makedirs(outfolder)
+            print "Extracting IMG3s to %s" % outfolder
         for img3 in self.get_img3s():
-            #print img3.sigcheck(self.device_infos.get("key89A").decode("hex"))
+            print img3.sigcheck(self.device_infos.get("key89A").decode("hex"))
             print img3.shortname
-            write_file(outfolder+ "/%s.img3" % img3.shortname, img3.img3)
+            if outfolder:
+                write_file(outfolder+ "/%s.img3" % img3.shortname, img3.img3)
+        return
         kernel = self.getPartitionVolume(0).readFile("/System/Library/Caches/com.apple.kernelcaches/kernelcache",returnString=True)
         if kernel:
             print "kernel"
@@ -394,16 +424,7 @@ class NAND(object):
             print "NVRAM is in NOR"
             return 
         #TODO
-        nvrm = self.readBootPartition(2, 8)
-
-    def getBoot(self):
-        boot = self.readBootPartition(0, 1)    
-        for i in xrange(0x400, 0x600, 16):
-            name = boot[i:i+4][::-1]
-            block_start, block_end, flag = struct.unpack("<LLL", boot[i+4:i+16])
-            if name == "none":
-                break
-            print name, block_start, block_end, flag
+        data = self.partition_scheme.readPartition("nvrm")
 
     def cacheData(self, name, data):
         if self.filename == "remote":
@@ -419,11 +440,5 @@ class NAND(object):
             return None
         
     def dump(self, p):
-        #hax ioflashstoragekit can only handle 1 connexion
-        if self.filename == "remote":
-            del self.image
         ioflash = IOFlashStorageKitClient()
         ioflash.dump_nand(p)
-        #restore proxy
-        if self.filename == "remote":
-            self.image = NANDRemote(self.pageSize, self.metaSize, self.pagesPerBlock, self.bfn)

@@ -51,7 +51,7 @@ class HFSFile(object):
             if n < bc:
                 lba = extent.startBlock+(n-(bc-extent.blockCount))
                 if not self.deleted and self.fileID != kHFSAllocationFileID and  not self.volume.isBlockInUse(lba):
-                    print "FAIL, block %x not marked as used" % n
+                    pass#print "FAIL, block %x not marked as used" % n
                 return self.processBlock(self.volume.readBlock(lba), lba)
         return ""
     

@@ -13,10 +13,14 @@ class NANDImageFlat(object):
             flags |= os.O_BINARY
         self.fd = os.open(filename, flags)
         self.nCEs = geometry["#ce"]
+        self.ppn = geometry.get("ppn-device", False)
         self.pageSize = geometry["#page-bytes"]
         self.metaSize = geometry.get("meta-per-logical-page", 12)
+        if self.metaSize == 0: self.metaSize = 12
         self.dumpedPageSize = geometry.get("dumpedPageSize", self.pageSize + self.metaSize + 8)
         self.hasIOKitStatus = True
+        if self.dumpedPageSize  ==  self.pageSize + geometry["#spare-bytes"] + 8:
+            self.metaSize = geometry["#spare-bytes"]
         if self.dumpedPageSize  ==  self.pageSize + geometry["#spare-bytes"] or self.dumpedPageSize == self.pageSize + self.metaSize:
             self.hasIOKitStatus = False
             self.blankPage = "\xFF" * self.pageSize
@@ -33,11 +37,11 @@ class NANDImageFlat(object):
         os.lseek(self.fd, off, os.SEEK_SET)
         return os.read(self.fd, self.dumpedPageSize)
 
-    def readPage(self, ce, page):
+    def readPage(self, ce, page, boot=False):
         d = self._readPage(ce, page)
         if not d or len(d) != self.dumpedPageSize:
             return None,None
-        if self.hasIOKitStatus:
+        if self.hasIOKitStatus and not self.ppn:#ppn iokit codes are bogus
             r1,r2 = struct.unpack("<LL", d[self.pageSize+self.metaSize:self.pageSize+self.metaSize+8])
             if r1 != 0x0:
                 return None, None
@@ -83,4 +87,3 @@ class NANDImageSplitCEs(object):
         data = d[1:1+self.pageSize]
         spare = d[1+self.pageSize:1+self.pageSize+self.metaSize]
         return spare, data 
-        

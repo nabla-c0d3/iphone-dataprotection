@@ -85,9 +85,9 @@ class ExaminerShell(Cmd):
         self.complete_plist = self._complete
         self.complete_xxd = self._complete
         self.image = image
-        if image.ppn:
+        if image.ppn and image.filename == "remote":
             self.savepath = "."
-            print "PPN device, use nand_dump + info, other commands will fail"
+            print "Remote PPN device, use nand_dump + save, other commands will fail"
             return
         self.system = image.getPartitionVolume(0)
         self.data = image.getPartitionVolume(1)
@@ -339,7 +339,7 @@ class ExaminerShell(Cmd):
         self.volume.bdev.dumpToFile(p.split()[0])
         
     def do_img3(self, p):
-        self.image.extract_img3s()
+        self.image.extract_img3s("./")
     
     def do_shsh(self, p):
         self.image.extract_shsh()

@@ -40,6 +40,7 @@ nand_chip_info = {
     0x3295DE45 : [ 0x2000, 0x80, 0x2000, 0x178, 8, 0, 9, 2, 0 ],
     0x32944845 : [ 0x1000, 0x80, 0x2000, 0x1C0, 8, 0, 9, 1, 0 ],
     0x32956845 : [ 0x2000, 0x80, 0x2000, 0x1C0, 8, 0, 9, 2, 0 ],
+    0x7ad5deec : [ 0x0000, 0x00, 0x0000, 0x000, 0, 0, 0, 2, 0 ] #iPad2 gsm 64gb
 }
 
 #https://github.com/iDroid-Project/openiBoot/blob/master/openiboot/plat-a4/h2fmi.c

@@ -38,7 +38,7 @@ class FileBlockDevice(object):
 class FTLBlockDevice(object):
     def __init__(self, nand, first_lba, last_lba, defaultKey=None):
         self.nand = nand
-        self.pageSize = nand.pageSize
+        self.pageSize = nand.logicalPageSize
         self.blockSize = 0 #not used
         self.key = defaultKey
         self.lbaoffset = first_lba
