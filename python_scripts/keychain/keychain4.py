@@ -37,6 +37,7 @@ class Keychain4(Keychain):
 
     def decrypt_item(self, row):
         version, clas = struct.unpack("<LL", row["data"][0:8])
+        clas &= 0xF
         if self.keybag.isBackupKeybag():
             if clas >= 9 and not self.keybag.deviceKey:
                 return {}
@@ -69,6 +70,7 @@ class Keychain4(Keychain):
             return
 
         version, clas = struct.unpack("<LL",blob[0:8])
+        clas &= 0xF
         self.clas=clas
         if version == 0:
             wrappedkey = blob[8:8+40]
