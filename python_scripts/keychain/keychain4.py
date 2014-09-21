@@ -1,5 +1,6 @@
 from crypto.aes import AESdecryptCBC
 import struct
+from pyasn1.codec.der.decoder import decode as der_decode
 
 """
     iOS 4 keychain-2.db data column format
@@ -46,7 +47,10 @@ class Keychain4(Keychain):
             if not dict:
                 return {"clas": clas, "rowid": row["rowid"]}
             if dict.has_key("v_Data"):
-                dict["data"] = dict["v_Data"].data
+                try:
+                  dict["data"] = dict["v_Data"].data
+                except AttributeError:
+                  dict["data"] = dict["v_Data"]
             else:
                 dict["data"] = ""
             dict["rowid"] = row["rowid"]
@@ -79,6 +83,10 @@ class Keychain4(Keychain):
             l = struct.unpack("<L",blob[8:12])[0]
             wrappedkey = blob[12:12+l]
             encrypted_data = blob[12+l:-16]
+        elif version == 3:
+          l = struct.unpack("<L",blob[8:12])[0]
+          wrappedkey = blob[12:12+l]
+          encrypted_data = blob[12+l:-16]
         else:
             raise Exception("unknown keychain verson ", version)
             return
@@ -92,3 +100,14 @@ class Keychain4(Keychain):
         elif version == 2:
             binaryplist = gcm_decrypt(unwrappedkey, "", encrypted_data, "", blob[-16:])
             return BPlistReader(binaryplist).parse()
+        elif version == 3:
+            der = gcm_decrypt(unwrappedkey, "", encrypted_data, "", blob[-16:])
+            stuff = der_decode(der)[0]
+            rval = {}
+            for k,v in stuff:
+              k = str(k)
+              # NB - this is binary and may not be valid UTF8 data
+              v = str(v)
+              rval[k] = v
+            return rval
+
