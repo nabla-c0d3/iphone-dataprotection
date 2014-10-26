@@ -1,7 +1,7 @@
 from btree import AttributesTree, CatalogTree, ExtentsOverflowTree
 from structs import *
 from util import write_file
-from util.bdev import FileBlockDevice
+import cStringIO
 import datetime
 import hashlib
 import os
@@ -22,13 +22,13 @@ class HFSFile(object):
         self.extents = volume.getAllExtents(hfsplusfork, fileID)
         self.deleted = deleted
 
-    def readAll(self, outputfile, truncate=True):
-        f = open(outputfile, "wb")
+    def readAll(self, output, truncate=True):
+        if truncate: truncate = (self.logicalSize % self.volume.blockSize) != 0
         for i in xrange(self.totalBlocks):
-            f.write(self.readBlock(i))
-        if truncate:
-            f.truncate(self.logicalSize)
-        f.close()
+            data = self.readBlock(i)
+            if truncate and i == self.totalBlocks - 1:
+                data = data[:self.logicalSize % len(data)]
+            output.write(data)
 
     def readAllBuffer(self, truncate=True):
         r = ""
@@ -54,7 +54,7 @@ class HFSFile(object):
                     pass#print "FAIL, block %x not marked as used" % n
                 return self.processBlock(self.volume.readBlock(lba), lba)
         return ""
-    
+
     def getLBAforBlock(self, n):
         bc = 0
         for extent in self.extents:
@@ -73,27 +73,38 @@ class HFSFile(object):
                 lba = extent.startBlock+(n-(bc-extent.blockCount))
                 self.volume.writeBlock(lba, data)
                 return
-                        
-        
+
+
 class HFSCompressedResourceFork(HFSFile):
     def __init__(self, volume, hfsplusfork, fileID):
         super(HFSCompressedResourceFork,self).__init__(volume, hfsplusfork, fileID)
         block0 = self.readBlock(0)
         self.header = HFSPlusCmpfRsrcHead.parse(block0)
-        print self.header
+        #print self.header
         self.blocks = HFSPlusCmpfRsrcBlockHead.parse(block0[self.header.headerSize:])
-        print "HFSCompressedResourceFork numBlocks:", self.blocks.numBlocks
+        #print "HFSCompressedResourceFork numBlocks:", self.blocks.numBlocks
+        #print self.blocks
 
     #HAX, readblock not implemented
-    def readAllBuffer(self):
+    def readAllBuffer(self, output):
         buff = super(HFSCompressedResourceFork, self).readAllBuffer()
         r = ""
         base = self.header.headerSize + 4
         for b in self.blocks.HFSPlusCmpfRsrcBlock:
-            r += zlib.decompress(buff[base+b.offset:base+b.offset+b.size])
-        return r
+            x = buff[base+b.offset:base+b.offset+b.size]
+            if x.startswith("\xFF"):
+                output.write(x[1:])
+            else:
+                output.write(zlib.decompress(x))
+        #return r
 
 class HFSVolume(object):
+    @staticmethod
+    def isRawHFSImage(bdev):
+        data = bdev.readBlock(0)
+        header = HFSPlusVolumeHeader.parse(data[0x400:0x800])
+        return header.signature == 0x4858 or header.signature == 0x482B
+
     def __init__(self, bdev):
         self.bdev = bdev
 
@@ -121,6 +132,9 @@ class HFSVolume(object):
         self.xattrTree = AttributesTree(self.xattrFile)
 
         self.hasJournal = self.header.attributes & (1 << kHFSVolumeJournaledBit)
+
+        k,v = self.catalogTree.search((kHFSRootFolderID, ""))
+        self.volumename = getString(v.data)
 
     def readBlock(self, b):
         return self.bdev.readBlock(b)
@@ -156,7 +170,7 @@ class HFSVolume(object):
         if record.recordType == kHFSPlusFolderRecord:
             return record.data.folderID
         return record.data.fileID
-    
+
     def listFolderContents(self, path):
         k,v = self.catalogTree.getRecordFromPath(path)
         if not k or v.recordType != kHFSPlusFolderRecord:
@@ -171,20 +185,25 @@ class HFSVolume(object):
     def ls(self, path):
         k,v = self.catalogTree.getRecordFromPath(path)
         return self._ls(k, v)
-    
+
     def _ls(self, k, v):
         res = {}
-        
+
         if not k or v.recordType != kHFSPlusFolderRecord:
             return None
         for k,v in self.catalogTree.getFolderContents(v.data.folderID):
             if v.recordType == kHFSPlusFolderRecord:
                 #.HFS+ Private Directory Data\r
-                res[getString(k).replace("\r","") + "/"] =  v.data 
+                res[getString(k).replace("\r","") + "/"] =  v.data
             elif v.recordType == kHFSPlusFileRecord:
-                res[getString(k)] = v.data
+                if is_hardlink(v.data):
+                    #print "hardlink iNode%d" % v.data.HFSPlusBSDInfo.special.iNodeNum
+                    k2,v2 = self.catalogTree.getRecordFromPath("/\x00\x00\x00\x00HFS+ Private Data/iNode%d" % v.data.HFSPlusBSDInfo.special.iNodeNum)
+                    res[getString(k)] = v2.data
+                else:
+                    res[getString(k)] = v.data
         return res
-    
+
     def listXattrs(self, path):
         k,v = self.catalogTree.getRecordFromPath(path)
         if k and v.recordType == kHFSPlusFileRecord:
@@ -192,57 +211,56 @@ class HFSVolume(object):
         elif k and v.recordType == kHFSPlusFolderThreadRecord:
             return self.xattrTree.getAllXattrs(v.data.folderID)
 
-    def readFileByRecord(self, record):
+    def readCompressedFile(self, record, xattr, output):
+        decmpfs = HFSPlusDecmpfs.parse(xattr)
+        data = None
+        if decmpfs.compression_type == 1:
+            output.write(xattr[16:])
+        elif decmpfs.compression_type == 3:
+            if decmpfs.uncompressed_size == len(xattr) - 16:
+                output.write(xattr[16:])
+            elif xattr[16] == "\xFF":
+                output.write(xattr[17:])
+            else:
+                output.write(zlib.decompress(xattr[16:]))
+        elif decmpfs.compression_type == 4:
+            f = HFSCompressedResourceFork(self, record.data.resourceFork, record.data.fileID)
+            f.readAllBuffer(output)
+
+    def readFileByRecord(self, key, record, output):
         assert record.recordType == kHFSPlusFileRecord
         xattr = self.getXattr(record.data.fileID, "com.apple.decmpfs")
-        data = None
         if xattr:
-            decmpfs = HFSPlusDecmpfs.parse(xattr)
-            if decmpfs.compression_type == 1:
-                return xattr[16:]
-            elif decmpfs.compression_type == 3:
-                if decmpfs.uncompressed_size == len(xattr) - 16:
-                    return xattr[16:]
-                return zlib.decompress(xattr[16:])
-            elif decmpfs.compression_type == 4:
-                f = HFSCompressedResourceFork(self, record.data.resourceFork, record.data.fileID)
-                data = f.readAllBuffer()
-            return data
+            self.readCompressedFile(record, xattr, output)
+        else:
+            f = HFSFile(self, record.data.dataFork, record.data.fileID)
+            f.readAll(output)
+        return True
 
-        f = HFSFile(self, record.data.dataFork, record.data.fileID)
-        return f.readAllBuffer()
 
-    #TODO: returnString compress
-    def readFile(self, path, outFolder="./", returnString=False):
+    def _readFile(self, path, output):
         k,v = self.catalogTree.getRecordFromPath(path)
         if not v:
             print "File %s not found" % path
             return
         assert v.recordType == kHFSPlusFileRecord
-        xattr = self.getXattr(v.data.fileID, "com.apple.decmpfs")
-        if xattr:
-            decmpfs = HFSPlusDecmpfs.parse(xattr)
+        return self.readFileByRecord(k, v, output)
 
-            if decmpfs.compression_type == 1:
-                return xattr[16:]
-            elif decmpfs.compression_type == 3:
-                if decmpfs.uncompressed_size == len(xattr) - 16:
-                    z = xattr[16:]
-                else:
-                    z = zlib.decompress(xattr[16:])
-                open(outFolder + os.path.basename(path), "wb").write(z)
-                return
-            elif decmpfs.compression_type == 4:
-                f = HFSCompressedResourceFork(self, v.data.resourceFork, v.data.fileID)
-                z = f.readAllBuffer()
-                open(outFolder + os.path.basename(path), "wb").write(z)
-                return z
-
-        f = HFSFile(self, v.data.dataFork, v.data.fileID)
+    def readFile(self, path, outdir="./", returnString=False):
         if returnString:
-            return f.readAllBuffer()
-        else:
-            f.readAll(outFolder + os.path.basename(path))
+            return self.readFileToString(path)
+        outputfile = os.path.join(outdir,os.path.basename(path))
+        f = open(outputfile, "wb")
+        res = self._readFile(path, f)
+        f.close()
+        if not res:
+            os.unlink(outputfile)
+        return res
+
+    def readFileToString(self, path):
+        sio = cStringIO.StringIO()
+        self._readFile(path, sio)
+        return sio.getvalue()
 
     def readJournal(self):
         #jb = self.read(self.header.journalInfoBlock * self.blockSize, self.blockSize)
@@ -254,7 +272,7 @@ class HFSVolume(object):
         self.fileids={}
         self.catalogTree.traverseLeafNodes(callback=self.grabFileId)
         return self.fileids
-    
+
     def grabFileId(self, k,v):
         if v.recordType == kHFSPlusFileRecord:
             self.fileids[v.data.fileID] = True
@@ -262,21 +280,23 @@ class HFSVolume(object):
     def getFileRecordForFileID(self, fileID):
         k,v = self.catalogTree.searchByCNID(fileID)
         return v
-    
+
     def getFullPath(self, fileID):
         k,v = self.catalogTree.search((fileID, ""))
         if not k:
             print "File ID %d not found" % fileID
             return ""
+        if fileID == kHFSRootFolderID:
+            return "/"
         p = getString(v.data)
         while k:
             k,v = self.catalogTree.search((v.data.parentID, ""))
             if k.parentID == kHFSRootFolderID:
                 break
             p = getString(v.data) + "/" + p
-            
+
         return "/" + p
-    
+
     def getFileRecordForPath(self, path):
         k,v = self.catalogTree.getRecordFromPath(path)
         if not k:
@@ -300,16 +320,19 @@ class HFSVolume(object):
         return extents
 
     def dohashFiles(self, k,v):
-        if v.recordType == kHFSPlusFileRecord:
+        if v.recordType == kHFSPlusFileRecord and not is_symlink(v.data):
             filename = getString(k)
             f = HFSFile(self, v.data.dataFork, v.data.fileID)
             print filename, hashlib.sha1(f.readAllBuffer()).hexdigest()
-            
+
     def hashFiles(self):
         self.catalogTree.traverseLeafNodes(callback=self.dohashFiles)
 
 if __name__ == "__main__":
-    v = HFSVolume("myramdisk.dmg",offset=0x40)
+    from util.bdev import FileBlockDevice
+    sys.argv.append("myramdisk.dmg")
+    bdev = FileBlockDevice(sys.argv[1])
+    v = HFSVolume(bdev)
     v.listFolderContents("/")
-    print v.readFile("/usr/local/share/restore/imeisv_svn.plist")
+    print v.readFile("/usr/local/share/restore/imeisv_svn.plist", returnString=True)
     print v.listXattrs("/usr/local/share/restore/imeisv_svn.plist")

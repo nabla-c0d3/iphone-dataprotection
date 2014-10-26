@@ -20,6 +20,9 @@ kHFSBinaryCompare = 0xBC
 def is_symlink(rec):
     return rec.FileInfo.fileCreator == kSymLinkCreator and rec.FileInfo.fileType == kSymLinkFileType
 
+def is_hardlink(rec):
+    return rec.FileInfo.fileCreator == kHFSPlusCreator and rec.FileInfo.fileType == kHardLinkFileType
+
 kHFSRootParentID            = 1
 kHFSRootFolderID            = 2
 kHFSExtentsFileID           = 3
@@ -164,7 +167,11 @@ HFSPlusBSDInfo = Struct("HFSPlusBSDInfo",
     UBInt8("adminFlags"),
     UBInt8("ownerFlags"),
     UBInt16("fileMode"),
-    UBInt32("union_special")  
+    Union("special",
+          UBInt32("iNodeNum"),
+          UBInt32("linkCount"),
+          UBInt32("rawDevice"),
+          )
 )
 
 Point = Struct("Point",

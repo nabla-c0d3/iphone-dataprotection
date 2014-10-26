@@ -105,8 +105,8 @@ class EMFVolume(HFSVolume):
         except:
             raise #Exception("Invalid keyfile")
         
+        self.decrypted = (self.header.finderInfo[3] == FLAG_DECRYPTED) 
         rootxattr =  self.getXattr(kHFSRootParentID, "com.apple.system.cprotect")
-        self.decrypted = (self.header.finderInfo[3] == FLAG_DECRYPTED)
         self.cp_major_version = None
         self.cp_root = None
         if rootxattr == None:
@@ -114,7 +114,7 @@ class EMFVolume(HFSVolume):
         else:
             self.cp_root = cp_root_xattr.parse(rootxattr)
             ver = self.cp_root.major_version
-            print "cprotect version : %d (iOS %d)" % (ver, 4 + int(ver != 2))
+            print "cprotect version : %d" % ver
             assert self.cp_root.major_version == 2 or self.cp_root.major_version == 4
             self.cp_major_version = self.cp_root.major_version
         self.keybag = loadKeybagFromVolume(self, device_infos)
@@ -144,7 +144,7 @@ class EMFVolume(HFSVolume):
             return None
         return self.getFileKeyForCprotect(cprotect)
 
-    def readFile(self, path, outFolder="./", returnString=False):
+    def readFile_old_api(self, path, outFolder="./", returnString=False):
         k,v = self.catalogTree.getRecordFromPath(path)
         if not v:
             print "File %s not found" % path
@@ -161,9 +161,25 @@ class EMFVolume(HFSVolume):
         f = EMFFile(self, v.data.dataFork, v.data.fileID, filekey)
         if returnString:
             return f.readAllBuffer()
-        f.readAll(outFolder + os.path.basename(path))
+        output = open(outFolder + os.path.basename(path), "wb")
+        f.readAll(output)
+        output.close()
         return True
 
+    def readFileByRecord(self, key, record, output):
+        assert record.recordType == kHFSPlusFileRecord
+        cprotect = self.getXattr(record.data.fileID, "com.apple.system.cprotect")
+        if cprotect == None or not self.cp_root or self.decrypted:
+            #print "cprotect attr not found, reading normally"
+            return super(EMFVolume, self).readFileByRecord(key, record, output)
+        filekey = self.getFileKeyForCprotect(cprotect)
+        if not filekey:
+            print "Cannot unwrap file key for file %d protection_class=%d" % (record.data.fileID, cprotect_xattr.parse(cprotect).persistent_class)
+            return
+        f = EMFFile(self, record.data.dataFork, record.data.fileID, filekey)
+        f.readAll(output)
+        return True
+    
     def flagVolume(self, flag):
         self.header.finderInfo[3] = flag
         h = HFSPlusVolumeHeader.build(self.header)

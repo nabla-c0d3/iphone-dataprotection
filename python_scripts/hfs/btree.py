@@ -2,8 +2,10 @@ from structs import *
 
 """
 Probably buggy
-HAX, only works on case SENSITIVE
+HAX, should work on case sensitive/insensitive volumes
 """
+import cStringIO
+from fastunicode import FastUnicodeCompare
 
 class BTree(object):
     def __init__(self, file, keyStruct, dataStruct):
@@ -14,7 +16,6 @@ class BTree(object):
         btnode = BTNodeDescriptor.parse(block0)
         assert btnode.kind == kBTHeaderNode
         self.header = BTHeaderRec.parse(block0[BTNodeDescriptor.sizeof():])
-        assert self.header.keyCompareType == 0 or self.header.keyCompareType == 0 or kHFSBinaryCompare
         #TODO: do more testing when nodeSize != blockSize
         self.nodeSize = self.header.nodeSize
         self.nodesInBlock = file.blockSize / self.header.nodeSize
@@ -145,13 +146,14 @@ class BTree(object):
         count = 0
         while nodeNumber != 0:
             _, stuff = self.readBtreeNode(nodeNumber)
+            lastbtnode = self.lastbtnode
             count += len(stuff)
             for k,v in stuff:
                 if callback:
-                    callback(k,v)
+                    callback(k,v) #XXX callback might modify self.lastbtnode
                 else:
                     self.printLeaf(k, v)
-            nodeNumber = self.lastbtnode.fLink
+            nodeNumber = lastbtnode.fLink
         return count
     
     #XXX
@@ -190,6 +192,9 @@ class CatalogTree(BTree):
     def __init__(self, file, volume):
         super(CatalogTree,self).__init__(file, HFSPlusCatalogKey, HFSPlusCatalogData)
         self.volume = volume
+        if self.header.keyCompareType == kHFSCaseFolding:
+            print "CatalogTree: Using case insensitive compare"
+            self.compareKeys = self.compareKeysCaseInSensitive
     
     def printLeaf(self, k, d):
         if d.recordType == kHFSPlusFolderRecord or d.recordType == kHFSPlusFileRecord:
@@ -199,6 +204,12 @@ class CatalogTree(BTree):
         #XXX http://dubeiko.com/development/FileSystems/HFSPLUS/tn1150.html#StringComparisonAlgorithm
         return (k2.parentID, getString(k2))
     
+    def compareKeysCaseInSensitive(self, k1, k2):
+        k2 = self.getComparableKey(k2)
+        if k1[0] != k2[0]:
+            return -1 if k1[0] < k2[0] else 1
+        return FastUnicodeCompare(k1[1], k2[1])
+
     def searchByCNID(self, cnid):
         threadk, threadd = self.search((cnid, ""))
         return self.search((threadd.data.parentID, getString(threadd.data))) if threadd else (None, None)
@@ -223,16 +234,21 @@ class CatalogTree(BTree):
 
             if v.recordType == kHFSPlusFolderRecord:
                 parentId = v.data.folderID
-            elif v.recordType == kHFSPlusFileRecord and is_symlink(v.data):
-                linkdata = self.volume.readFileByRecord(v)
-                print "symlink %s => %s" % (p, linkdata)
-                if not linkdata:
-                    return None, None
-                t = path.split("/")
-                t[i] = linkdata
-                newpath = "/".join(t)
-                return self.getRecordFromPath(newpath)
-            else:
+            elif v.recordType == kHFSPlusFileRecord:
+                if is_symlink(v.data):
+                    sio = cStringIO.StringIO()
+                    self.volume.readFileByRecord(k, v, sio)
+                    linkdata = sio.getvalue()
+                    print "symlink %s => %s" % (p, linkdata)
+                    if not linkdata:
+                        return None, None
+                    t = path.split("/")
+                    t[i] = linkdata
+                    newpath = "/".join(t)
+                    return self.getRecordFromPath(newpath)
+                elif is_hardlink(v.data):
+                    print "hardlink => iNode%d" % v.data.HFSPlusBSDInfo.special.iNodeNum
+                    return self.getRecordFromPath("/\x00\x00\x00\x00HFS+ Private Data/iNode%d" % v.data.HFSPlusBSDInfo.special.iNodeNum)
                 break
             i += 1
         return k,v
