@@ -219,6 +219,7 @@ class Keybag(object):
         return AESUnwrap(md, persistent_key[32:])
 
     def unwrapKeyForClass(self, clas, persistent_key, printError=True):
+        clas = clas & 0xF
         if not self.classKeys.has_key(clas) or not self.classKeys[clas].has_key("KEY"):
             if printError: print "Keybag key %d missing or locked" % clas
             return ""
