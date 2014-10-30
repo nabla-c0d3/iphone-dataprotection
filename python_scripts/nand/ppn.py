@@ -9,7 +9,6 @@ import plistlib
 import sqlite3
 import struct
 
-from Crypto.Cipher import AES
 from construct import Array
 from construct.core import Struct
 from construct.macros import ULInt32, String, ULInt8, ULInt16

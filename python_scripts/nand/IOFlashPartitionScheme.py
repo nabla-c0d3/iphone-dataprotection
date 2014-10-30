@@ -178,18 +178,18 @@ class IOFlashPartitionScheme(object):
             ce, block = self.spares[sub]
             print "Reading remapped bootloader block %s %d => %d:%d !" % (name, vblock, ce,block)
         elif flags & kIOFlashPartitionSchemeIsPool:
-            print "Partition %s has pool flag, remapping" % name
+            #print "Partition %s has pool flag, remapping" % name
             sub = self.subs.index(vblock)
-            print "sub ce=%d block=%d vblock=%d sub=%d" % (ce, block, vblock, sub)
+            #print "sub ce=%d block=%d vblock=%d sub=%d" % (ce, block, vblock, sub)
             ce, block = self.spares[sub]
-            print "=> ce=%d block=%d" % (ce,block)
+            #print "=> ce=%d block=%d" % (ce,block)
 
         pagesPerBlock = self.pagesPerBlock
         if flags & kIOFlashPartitionSchemeUseSLCBlocks:
             pagesPerBlock = self.nand.slc_pages
             page_bits = self.nand.page_bits
             bits = self.nand.block_bits + self.nand.cau_bits + page_bits
-        print name, block,self.pagesPerBlock, "%x"  %flags
+        #print name, block,self.pagesPerBlock, "%x"  %flags
         res = ""
         for i in xrange(pagesPerBlock):
             if flags & kIOFlashPartitionSchemeUseSLCBlocks:
