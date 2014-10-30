@@ -3,7 +3,8 @@ from util import write_file
 from util.asciitables import print_table
 from util.bplist import BPlistReader
 from util.cert import RSA_KEY_DER_to_PEM, CERT_DER_to_PEM
-import M2Crypto
+try: import M2Crypto
+except: M2Crypto = None
 import hashlib
 import plistlib
 import sqlite3
@@ -33,6 +34,17 @@ def render_password(p):
         return "%s:%d;%s;%s" % (p["srvr"],p["port"],p["acct"],data)
     else:
         return "%s;%s;%s" % (p["svce"],p["acct"],data)
+
+def get_CN_from_der_cert(der):
+    if not M2Crypto:
+        return ""
+    cert = M2Crypto.X509.load_cert_der_string(der)
+    subject = cert.get_subject().as_text()
+    common_name = cert.get_subject().get_entries_by_nid(M2Crypto.X509.X509_Name.nid['CN'])
+    if len(common_name):
+        return str(common_name[0].get_data())
+    else:
+        return ""
 
 class Keychain(object):
     def __init__(self, filename):
@@ -76,14 +88,13 @@ class Keychain(object):
     def get_certs(self):
         certs = {}
         pkeys = {}
+        if not M2Crypto:
+            print "M2Crypto missing for get_certs"
+            return certs, pkeys
         keys = self.get_keys()
         for row in self.get_cert():
-            cert = M2Crypto.X509.load_cert_der_string(row["data"])
-            subject = cert.get_subject().as_text()
-            common_name = cert.get_subject().get_entries_by_nid(M2Crypto.X509.X509_Name.nid['CN'])
-            if len(common_name):
-                subject = str(common_name[0].get_data())
-            else:
+            subject = get_CN_from_der_cert(row["data"])
+            if not subject:
                 subject = "cn_unknown_%d" % row["rowid"]
             certs[subject+ "_%s" % row["agrp"]] = cert
             
@@ -164,12 +175,8 @@ class Keychain(object):
         for row in self.get_cert():
             subject = "?"
             if row.has_key("data"):
-                cert = M2Crypto.X509.load_cert_der_string(row["data"])
-                subject = cert.get_subject().as_text()
-                common_name = cert.get_subject().get_entries_by_nid(M2Crypto.X509.X509_Name.nid['CN'])
-                if len(common_name):
-                    subject = str(common_name[0].get_data())
-                else:
+                subject = get_CN_from_der_cert(row["data"])
+                if not subject:
                     subject = "cn_unknown_%d" % row["rowid"]
                 c[hashlib.sha1(str(row["pkhh"])).hexdigest() + row["agrp"]] = subject
             row = [str(row["rowid"]), 
@@ -221,6 +228,7 @@ class Keychain(object):
                 blob = CERT_DER_to_PEM(row["data"])
                 if filename:
                     write_file(filename, blob)
+                if not M2Crypto: continue
                 cert = M2Crypto.X509.load_cert_der_string(row["data"])
                 print cert.as_text()
                 return
@@ -234,4 +242,4 @@ class Keychain(object):
                 #k = M2Crypto.RSA.load_key_string(blob)
                 print blob
                 return
-                    
+

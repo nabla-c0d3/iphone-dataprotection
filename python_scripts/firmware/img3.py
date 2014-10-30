@@ -1,7 +1,8 @@
 from crypto.aes import AESdecryptCBC
 from util import read_file, write_file
 from util.ramdiskclient import RamdiskToolClient
-import M2Crypto
+try: import M2Crypto
+except: M2Crypto = None
 import struct
 import hashlib
 import os
