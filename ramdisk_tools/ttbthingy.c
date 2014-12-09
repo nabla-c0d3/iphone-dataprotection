@@ -27,11 +27,15 @@
  * as the kernel isn't randomized in physical memory space.)
  */
 
-#include <mach/mach.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <sys/sysctl.h>
+#include <mach/machine.h>
+#include <mach/mach.h>
 #include "ioflash/externalMethod.h"
+#include <CoreFoundation/CoreFoundation.h>
 
 /*
  * ARM page bits for L1 sections.
@@ -490,8 +494,12 @@ uint32_t find_pmap_location(uint32_t region, uint8_t* kdata, size_t ksize)
     if(!ptr)
         return 0;
 
+    printf("pmap_map_bd xref at %p\n", ptr);
+    //hax for iOS 8, panic("\"pmap_map_bd\"") call is located *after* the end of function so go back a bit
+    ptr -= 0x10;
+
     // Find the end of it.
-    const uint8_t search_function_end[] = {0xF0, 0xBD};
+    const uint8_t search_function_end[] = {0xF0, 0xBD};//   POP {R4-R7,PC}
     ptr = memmem(ptr, ksize - ((uintptr_t)ptr - (uintptr_t)kdata), search_function_end, sizeof(search_function_end));
     if(!ptr)
         return 0;
@@ -617,9 +625,59 @@ static void generate_ttb_entries(uint32_t ram_base)
 #define DMPSIZE            0xF00000
 void do_kernel_patchs();
 
+CF_EXPORT const CFStringRef _kCFSystemVersionProductVersionKey;
+CF_EXPORT CFDictionaryRef _CFCopySystemVersionDictionary(void);
+
+int check_ios_version()
+{
+    //http://stackoverflow.com/questions/20104403/determine-if-ios-device-is-32-or-64-bit
+    size_t size;
+    cpu_type_t type;
+
+    size = sizeof(type);
+    sysctlbyname("hw.cputype", &type, &size, NULL, 0);
+
+    if(type != CPU_TYPE_ARM)
+    {
+        printf("Only 32 bit devices are supported !\n");
+        return 0;
+    }
+    CFStringRef version = NULL;
+    CFDictionaryRef versionDict = _CFCopySystemVersionDictionary();
+
+    if(versionDict == NULL)
+        return 0;
+    version = CFDictionaryGetValue(versionDict, _kCFSystemVersionProductVersionKey);
+
+    if(version == NULL)
+        return 0;
+
+    CFArrayRef arr = CFStringCreateArrayBySeparatingStrings(kCFAllocatorDefault, version, CFSTR("."));
+
+    if(arr == NULL)
+        return 0;
+
+    SInt32 major = CFStringGetIntValue(CFArrayGetValueAtIndex(arr, 0));
+
+    printf("iOS major version: %ld\n", major);
+
+    if(major != 8 && major != 7 && major != 6)
+    {
+        printf("Unsupported iOS version !\n");
+        return 0;
+    }
+
+    return 1;
+}
+
 int main(int argc, char* argv[])
 {
     uint32_t chunksize = 2048;
+
+    if(!check_ios_version())
+    {
+        return 0;
+    }
 
     printf("calling get_kernel_base\n");
     /* get kernel base. */
@@ -687,6 +745,7 @@ int main(int argc, char* argv[])
     /* kernel dumped, now find pmap. */
     uint32_t kernel_pmap = kernel_base + 0x1000 + find_pmap_location(kernel_base, (uint8_t*)p, DMPSIZE);
     printf("kernel pmap is at 0x%08x\n", kernel_pmap);
+    //TODO add more sanity checks
 
     /* Read for kernel_pmap, dereference it for pmap_store. */
     vm_read(kernel_task, kernel_pmap, 2048, &buf, &sz);
@@ -741,7 +800,8 @@ com.apple.iokit.IOCryptoAcceleratorFamily:__text:8094BD4C 00 F0 A2 80           
     while(ptr < ((uint8_t*)SHADOWMAP_END))
     {
         if(!memcmp(ptr, "\xB0\xF5\xFA\x6F\x00\xF0\xA2\x80", 8)//ios7
-         || !memcmp(ptr, "\xB0\xF5\xFA\x6F\x00\xF0\x92\x80", 8))//ios6
+         || !memcmp(ptr, "\xB0\xF5\xFA\x6F\x00\xF0\x92\x80", 8)//ios6
+         || !memcmp(ptr, "\xB0\xF5\xFA\x6F\x00\xF0\x82\x80", 8))//ios8
         {
             printf("Patching IOSAESAccelerator enable uid key !\n");
             ptr += 4;
@@ -749,7 +809,8 @@ com.apple.iokit.IOCryptoAcceleratorFamily:__text:8094BD4C 00 F0 A2 80           
         }
         //if(!memcmp(ptr, "\xF0\xB5\x03\xAF\x4D\xF8\x04\x8D\x8B\xB0\x15\x46\x40\xF2\xC2\x26", 16))
         //IOFlashControllerUserClient::externalMethod
-        if(!memcmp(ptr, "\xF0\xB5\x03\xAF\x4D\xF8\x04\x8D\x8B\xB0\x15\x46", 12))
+        if(!memcmp(ptr, "\xF0\xB5\x03\xAF\x4D\xF8\x04\x8D\x8B\xB0\x15\x46", 12)
+         ||!memcmp(ptr, "\xF0\xB5\x03\xAF\x4D\xF8\x04\x8D\x8B\xB0\x16\x46", 12))//ios8
         {
             addr = (ptr - SHADOWMAP_BEGIN) + kernel_base  - 0x1000;
             printf("Found ioFlash at %p\n", addr);
@@ -774,7 +835,8 @@ com.apple.iokit.IOCryptoAcceleratorFamily:__text:8094BD4C 00 F0 A2 80           
             }
         }
         //meta fringe
-        if(!memcmp(ptr, "\xF0\xB5\x03\xAF\x81\xB0\x1C\x46\x15\x46\x0E\x46\xB5\x42", 14))
+        if(!memcmp(ptr, "\xF0\xB5\x03\xAF\x81\xB0\x1C\x46\x15\x46\x0E\x46\xB5\x42", 14)
+         ||!memcmp(ptr, "\xF0\xB5\x03\xAF\x81\xB0\x1C\x46\x15\x46\x0E\x46\xAE\x42", 14))//ios8
         {
             printf("Found AppleIOPFMI::_fmiPatchMetaFringe\n");
             *((uint32_t*) ptr) = 0x47704770;
